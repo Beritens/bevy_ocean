@@ -6,14 +6,16 @@
 const PI = 3.141592;
 const roughness = 0.05;
 const F0 = 1.0;
-const ambient = vec3(0.04,0.04,0.06);
+const ambient = vec3(0.02,0.06,0.08);
 const specular_color = vec3(0.1, 0.1, 0.1);
 const light_color = vec3(1.0, 0.8, 0.2);
+//const light_color = vec3(0.1, 0.1, 0.0);
 const light_dir = vec3(0.3,1.0, -5.0);
 
 @group(2) @binding(0) var<uniform> material_color: vec4<f32>;
 @group(2) @binding(1) var skyboxSampler: sampler;
 @group(2) @binding(2) var skybox: texture_cube<f32>;
+@group(2) @binding(3) var displacement: texture_2d_array<f32>;
 
 //const waveA = array<f32, 4>(0.01, 0.2, 0.4, 0.5);
 //const waveX = array<f32, 4>(-1.8, 1.0, -0.4, 0.1);
@@ -205,16 +207,18 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let camera_position = vec3<f32>(view_bindings::view.world_from_view[3].xyz);
     let view_dir = normalize(p - camera_position);
 
-    let r = reflect(light, normal);
+    var r = reflect(view_dir,normal);
+    r.z = -r.z;
     let reflected = textureSample(skybox, skyboxSampler, r);
 
 	let F: f32 = pow(1. - dot(-view_dir, normal), 5.);
 //    return reflected;
 //    return vec4(mesh.world_position.xyz, 1.0);
 
+      return textureSample(displacement, skyboxSampler, p.xz, 0);
 
 //
-    return vec4( 1.0 * F * reflected.xyz + material_color.xyz * ambient + brightness * CookTorrance(material_color.xyz, specular_color, normal, light, -view_dir, light_color),1.0);
+//    return vec4( 1.0 * F * reflected.xyz + material_color.xyz * ambient + brightness * CookTorrance(material_color.xyz, specular_color, normal, light, -view_dir, light_color),1.0);
 //    return vec4(material.color.xyz * ambient + brightness * material.color.xyz,1.0);
 //       return vec4(brightness * material.color.xyz, 1.0);
 //    return vec4(binormal, 1.0);

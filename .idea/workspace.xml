@@ -7,8 +7,12 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1e8aeb3d-9b44-4181-ba9e-edebcf5d5b9c" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+    <list default="true" id="1e8aeb3d-9b44-4181-ba9e-edebcf5d5b9c" name="Changes" comment="simple gerstner waves with cook torrance shader">
+      <change afterPath="$PROJECT_DIR$/assets/shaders/fft_water.wgsl" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/water.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,6 +20,16 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:dev" />
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Rust File" />
+      </list>
+    </option>
+  </component>
+  <component name="FormatOnSaveOptions">
+    <option name="myRunOnSave" value="true" />
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
     <option name="ROOT_SYNC" value="DONT_SYNC" />
@@ -52,7 +66,7 @@
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "D:/DEV/bevy_ocean",
+    "last_opened_file_path": "D:/DEV/bevy_ocean/assets/shaders",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -61,9 +75,15 @@
     "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
     "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
     "org.rust.first.attach.projects": "true",
+    "settings.editor.selected.configurable": "actions.on.save",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\DEV\bevy_ocean\assets\shaders" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="Run bevy_ocean" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="run --package bevy_ocean --bin bevy_ocean" />
@@ -117,11 +137,43 @@
       <option name="presentableId" value="Default" />
       <updated>1734648188018</updated>
       <workItem from="1734648189274" duration="657000" />
-      <workItem from="1734648904303" duration="1068000" />
+      <workItem from="1734648904303" duration="1272000" />
+      <workItem from="1734728030872" duration="1370000" />
+      <workItem from="1734890042339" duration="5185000" />
+      <workItem from="1735039758354" duration="19823000" />
+      <workItem from="1735088263146" duration="2162000" />
     </task>
+    <task id="LOCAL-00001" summary="simple gerstner waves with cook torrance shader">
+      <option name="closed" value="true" />
+      <created>1734650419528</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1734650419528</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="simple gerstner waves with cook torrance shader" />
+    <option name="LAST_COMMIT_MESSAGE" value="simple gerstner waves with cook torrance shader" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/water.rs</url>
+          <line>252</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
   </component>
 </project>
