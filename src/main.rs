@@ -3,13 +3,15 @@ mod water;
 use crate::water::{SpectrumParameters, WaterPlugin, WaterResource};
 use bevy::asset::RenderAssetUsages;
 use bevy::core_pipeline::Skybox;
-use bevy::image::CompressedImageFormats;
+use bevy::image::{
+    CompressedImageFormats, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor,
+};
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_resource::{
-    AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages,
-    TextureViewDescriptor, TextureViewDimension,
+    AddressMode, AsBindGroup, Extent3d, FilterMode, SamplerDescriptor, ShaderRef, TextureDimension,
+    TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension,
 };
 use bevy::render::storage::ShaderStorageBuffer;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin, TouchControls};
@@ -19,11 +21,22 @@ const SHADER_ASSET_PATH: &str = "shaders/custom_material.wgsl";
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, MaterialPlugin::<CustomMaterial>::default()))
+        .add_plugins((
+            DefaultPlugins.set(ImagePlugin {
+                default_sampler: ImageSamplerDescriptor {
+                    address_mode_u: ImageAddressMode::Repeat,
+                    address_mode_v: ImageAddressMode::Repeat,
+                    address_mode_w: ImageAddressMode::Repeat,
+                    // mag_filter: ImageFilterMode::Linear,
+                    ..Default::default()
+                },
+            }),
+            MaterialPlugin::<CustomMaterial>::default(),
+        ))
         .add_plugins(PanOrbitCameraPlugin)
         .add_plugins(WaterPlugin)
         .add_systems(Startup, setup)
-        // .add_systems(Update, asset_loaded)
+        .add_systems(Update, update_time)
         .run();
 }
 
@@ -77,7 +90,7 @@ fn setup(
         Extent3d {
             width: 256,
             height: 256,
-            depth_or_array_layers: 3,
+            depth_or_array_layers: 6,
         },
         TextureDimension::D2,
         &[
@@ -107,19 +120,35 @@ fn setup(
     displacement_texture.texture_descriptor.usage =
         TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
 
+    let mut slope_texture = Image::new_fill(
+        Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 3,
+        },
+        TextureDimension::D2,
+        &[255, 255, 255, 255, 255, 255, 255, 255],
+        TextureFormat::Rg32Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+
+    slope_texture.texture_descriptor.usage =
+        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
+
     let image0 = images.add(initial_spectrum_texture);
     let image1 = images.add(spectrum_texture);
     let image2 = images.add(displacement_texture);
+    let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 10.0,
-        angle: 0.0,
+        scale: 10.01,
+        angle: 90.0,
         spreadBlend: 1.0,
-        swell: 0.5,
-        alpha: 0.0,
-        peakOmega: 1.0,
-        gamma: 0.0,
-        shortWavesFade: 0.5,
+        swell: 2.001,
+        alpha: 10.0,
+        peakOmega: 0.1,
+        gamma: 10.1,
+        shortWavesFade: 0.001,
     };
 
     let spectrum_array = [
@@ -135,21 +164,27 @@ fn setup(
 
     let water_resource = WaterResource {
         _N: 256,
-        _seed: 0,
-        _LengthScale0: 2,
-        _LengthScale1: 10,
-        _LengthScale2: 100,
-        _LowCutoff: 0.0,
+        _seed: 10,
+        _LengthScale0: 0.1,
+        _LengthScale1: 10.0,
+        _LengthScale2: 100.0,
+        _LowCutoff: 0.0001,
         _HighCutoff: 1000.0,
         _Gravity: 9.8,
-        _RepeatTime: 1.0,
+        _RepeatTime: 200.0,
         _FrameTime: 0.0,
-        _Lambda: Vec2 { x: 0.0, y: 0.0 },
+        _Lambda: Vec2 { x: 1.0, y: 5.0 },
         _Spectrums: spectrums,
-        _SpectrumTextures: image1,
+        _SpectrumTextures: image1.clone(),
         _InitialSpectrumTextures: image0.clone(),
-        _DisplacementTextures: image2,
-        _Depth: 50.0,
+        _DisplacementTextures: image2.clone(),
+        _SlopeTextures: image3,
+        _Depth: 1000000.0,
+        _FourierTarget: image1.clone(),
+        _FoamBias: 0.0,
+        _FoamDecayRate: 2.0,
+        _FoamAdd: 1.0,
+        _FoamThreshold: 0.0,
     };
 
     commands.insert_resource(water_resource);
@@ -159,11 +194,15 @@ fn setup(
         MeshMaterial3d(materials.add(CustomMaterial {
             color: LinearRgba::new(0.0, 0.2, 1.0, 1.0),
             skybox_texture: skybox_handle.clone(),
-            displacement: image0,
+            displacement: image2.clone(),
             alpha_mode: AlphaMode::Opaque,
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
+}
+
+fn update_time(time: Res<Time>, mut water_resource: ResMut<WaterResource>) {
+    water_resource._FrameTime += time.delta_secs() * 0.1;
 }
 
 fn generate_custom_mesh() -> Mesh {

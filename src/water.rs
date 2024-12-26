@@ -45,11 +45,11 @@ pub struct WaterResource {
     #[uniform(1)]
     pub _seed: i32,
     #[uniform(2)]
-    pub _LengthScale0: u32,
+    pub _LengthScale0: f32,
     #[uniform(3)]
-    pub _LengthScale1: u32,
+    pub _LengthScale1: f32,
     #[uniform(4)]
-    pub _LengthScale2: u32,
+    pub _LengthScale2: f32,
     #[uniform(5)]
     pub _LowCutoff: f32,
     #[uniform(6)]
@@ -64,20 +64,38 @@ pub struct WaterResource {
     #[uniform(10)]
     pub _Lambda: Vec2,
 
-    #[storage(11)]
+    #[storage(11, visibility(compute), read_only)]
     pub _Spectrums: Handle<ShaderStorageBuffer>,
 
-    #[storage_texture(12, image_format = Rgba32Float, access = WriteOnly, dimension = "2d_array")]
+    #[storage_texture(12, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
     pub _SpectrumTextures: Handle<Image>,
 
-    #[storage_texture(13, image_format = Rgba32Float, access = WriteOnly, dimension = "2d_array")]
+    #[storage_texture(13, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
     pub _InitialSpectrumTextures: Handle<Image>,
 
-    #[storage_texture(14, image_format = Rgba32Float, access = WriteOnly, dimension = "2d_array")]
+    #[storage_texture(14, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
     pub _DisplacementTextures: Handle<Image>,
 
-    #[uniform(15)]
+    #[storage_texture(15, image_format = Rg32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
+    pub _SlopeTextures: Handle<Image>,
+
+    #[uniform(16)]
     pub _Depth: f32,
+
+    #[storage_texture(17, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
+    pub _FourierTarget: Handle<Image>,
+
+    #[uniform(18)]
+    pub _FoamBias: f32,
+
+    #[uniform(19)]
+    pub _FoamDecayRate: f32,
+
+    #[uniform(20)]
+    pub _FoamAdd: f32,
+
+    #[uniform(21)]
+    pub _FoamThreshold: f32,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
@@ -116,14 +134,6 @@ fn prepare_bind_group(
     water_resource: Res<WaterResource>,
     render_device: Res<RenderDevice>,
 ) {
-    // let _N = water_resource._N;
-    // let displacement = gpu_images.get(&water_resource.displacement).unwrap();
-    // let bind_group = render_device.create_bind_group(
-    //     None,
-    //     &pipeline.bind_group_layout,
-    //     &BindGroupEntries::sequential((&displacement)),
-    // );
-
     let mut bindGroupParam = (gpu_images, fallback_images, gpu_shader_storage_buffer);
     match water_resource.as_bind_group(
         &pipeline.bind_group_layout,
@@ -142,8 +152,12 @@ fn prepare_bind_group(
 #[derive(Resource)]
 struct WaterPipeline {
     bind_group_layout: BindGroupLayout,
-    init_pipeline: CachedComputePipelineId,
-    update_pipeline: CachedComputePipelineId,
+    initSpectrum_pipeline: CachedComputePipelineId,
+    packSpectrumConjugates_pipeline: CachedComputePipelineId,
+    updateSpectrum_pipeline: CachedComputePipelineId,
+    horizontalFFT_pipeline: CachedComputePipelineId,
+    verticalFFT_pipeline: CachedComputePipelineId,
+    assembleMaps_pipeline: CachedComputePipelineId,
 }
 
 impl FromWorld for WaterPipeline {
@@ -152,29 +166,77 @@ impl FromWorld for WaterPipeline {
         let bind_group_layout = WaterResource::bind_group_layout(render_device);
         let shader = world.load_asset(SHADER_ASSET_PATH);
         let pipeline_cache = world.resource::<PipelineCache>();
-        let init_pipeline = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-            label: None,
-            layout: vec![bind_group_layout.clone()],
-            push_constant_ranges: Vec::new(),
-            shader: shader.clone(),
-            shader_defs: vec![],
-            entry_point: Cow::from("CS_InitializeSpectrum"),
-            zero_initialize_workgroup_memory: false,
-        });
-        let update_pipeline = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-            label: None,
-            layout: vec![bind_group_layout.clone()],
-            push_constant_ranges: Vec::new(),
-            shader,
-            shader_defs: vec![],
-            entry_point: Cow::from("CS_InitializeSpectrum"),
-            zero_initialize_workgroup_memory: false,
-        });
+        let initSpectrum_pipeline =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: vec![bind_group_layout.clone()],
+                push_constant_ranges: Vec::new(),
+                shader: shader.clone(),
+                shader_defs: vec![],
+                entry_point: Cow::from("initSpectrum"),
+                zero_initialize_workgroup_memory: false,
+            });
+        let packSpectrumConjugates_pipeline =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: vec![bind_group_layout.clone()],
+                push_constant_ranges: Vec::new(),
+                shader: shader.clone(),
+                shader_defs: vec![],
+                entry_point: Cow::from("packSpectrumConjugate"),
+                zero_initialize_workgroup_memory: false,
+            });
+        let updateSpectrum_pipeline =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: vec![bind_group_layout.clone()],
+                push_constant_ranges: Vec::new(),
+                shader: shader.clone(),
+                shader_defs: vec![],
+                entry_point: Cow::from("updateSpectrum"),
+                zero_initialize_workgroup_memory: false,
+            });
+
+        let horizontalFFT_pipeline =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: vec![bind_group_layout.clone()],
+                push_constant_ranges: Vec::new(),
+                shader: shader.clone(),
+                shader_defs: vec![],
+                entry_point: Cow::from("horizontalFFT"),
+                zero_initialize_workgroup_memory: false,
+            });
+        let verticalFFT_pipeline =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: vec![bind_group_layout.clone()],
+                push_constant_ranges: Vec::new(),
+                shader: shader.clone(),
+                shader_defs: vec![],
+                entry_point: Cow::from("verticalFFT"),
+                zero_initialize_workgroup_memory: false,
+            });
+
+        let assembleMaps_pipeline =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: vec![bind_group_layout.clone()],
+                push_constant_ranges: Vec::new(),
+                shader: shader.clone(),
+                shader_defs: vec![],
+                entry_point: Cow::from("assembleMaps"),
+                zero_initialize_workgroup_memory: false,
+            });
 
         WaterPipeline {
             bind_group_layout,
-            init_pipeline,
-            update_pipeline,
+            initSpectrum_pipeline,
+            packSpectrumConjugates_pipeline,
+            updateSpectrum_pipeline,
+            horizontalFFT_pipeline,
+            verticalFFT_pipeline,
+            assembleMaps_pipeline,
         }
     }
 }
@@ -205,19 +267,35 @@ impl render_graph::Node for WaterNode {
         // if the corresponding pipeline has loaded, transition to the next stage
         match self.state {
             WaterState::Loading => {
-                match pipeline_cache.get_compute_pipeline_state(pipeline.init_pipeline) {
-                    CachedPipelineState::Ok(_) => {
-                        self.state = WaterState::Init;
+                let mut both_ok: usize = 0;
+                let pipelines = [
+                    pipeline.initSpectrum_pipeline,
+                    pipeline.packSpectrumConjugates_pipeline,
+                    pipeline.updateSpectrum_pipeline,
+                    pipeline.verticalFFT_pipeline,
+                    pipeline.horizontalFFT_pipeline,
+                    pipeline.assembleMaps_pipeline,
+                ];
+
+                for &pipeline in pipelines.iter() {
+                    match pipeline_cache.get_compute_pipeline_state(pipeline) {
+                        CachedPipelineState::Ok(_) => {
+                            both_ok += 1;
+                        }
+                        CachedPipelineState::Err(err) => {
+                            panic!("Initializing assets/{SHADER_ASSET_PATH}:\n{err}");
+                        }
+                        _ => {}
                     }
-                    CachedPipelineState::Err(err) => {
-                        panic!("Initializing assets/{SHADER_ASSET_PATH}:\n{err}")
-                    }
-                    _ => {}
+                }
+
+                if both_ok == pipelines.len() {
+                    self.state = WaterState::Init;
                 }
             }
             WaterState::Init => {
                 if let CachedPipelineState::Ok(_) =
-                    pipeline_cache.get_compute_pipeline_state(pipeline.update_pipeline)
+                    pipeline_cache.get_compute_pipeline_state(pipeline.initSpectrum_pipeline)
                 {
                     self.state = WaterState::Update;
                 }
@@ -238,31 +316,80 @@ impl render_graph::Node for WaterNode {
             let pipeline_cache = world.resource::<PipelineCache>();
             let pipeline = world.resource::<WaterPipeline>();
             {
-                let mut pass = render_context
-                    .command_encoder()
-                    .begin_compute_pass(&ComputePassDescriptor::default());
-
                 match self.state {
                     WaterState::Loading => {}
                     WaterState::Init => {
-                        let init_pipeline = pipeline_cache
-                            .get_compute_pipeline(pipeline.init_pipeline)
-                            .unwrap();
-                        pass.set_bind_group(0, &bind_group.0, &[]);
-                        pass.set_pipeline(init_pipeline);
-                        pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
+                        {
+                            let mut pass = render_context
+                                .command_encoder()
+                                .begin_compute_pass(&ComputePassDescriptor::default());
+                            let init_pipeline = pipeline_cache
+                                .get_compute_pipeline(pipeline.initSpectrum_pipeline)
+                                .unwrap();
+                            pass.set_bind_group(0, &bind_group.0, &[]);
+                            pass.set_pipeline(init_pipeline);
+                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
+                        }
+
+                        {
+                            let mut pass = render_context
+                                .command_encoder()
+                                .begin_compute_pass(&ComputePassDescriptor::default());
+                            let init_pipeline = pipeline_cache
+                                .get_compute_pipeline(pipeline.packSpectrumConjugates_pipeline)
+                                .unwrap();
+                            pass.set_bind_group(0, &bind_group.0, &[]);
+                            pass.set_pipeline(init_pipeline);
+                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
+                        }
                     }
                     WaterState::Update => {
-                        // let update_pipeline = pipeline_cache
-                        //     .get_compute_pipeline(pipeline.update_pipeline)
-                        //     .unwrap();
-                        // pass.set_bind_group(0, &bind_group.0, &[]);
-                        // pass.set_pipeline(update_pipeline);
-                        // pass.dispatch_workgroups(
-                        //     SIZE.0 / WORKGROUP_SIZE,
-                        //     SIZE.1 / WORKGROUP_SIZE,
-                        //     1,
-                        // );
+                        {
+                            let mut pass = render_context
+                                .command_encoder()
+                                .begin_compute_pass(&ComputePassDescriptor::default());
+                            let update_pipeline = pipeline_cache
+                                .get_compute_pipeline(pipeline.updateSpectrum_pipeline)
+                                .unwrap();
+                            pass.set_bind_group(0, &bind_group.0, &[]);
+                            pass.set_pipeline(update_pipeline);
+                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
+                        }
+                        {
+                            let mut pass = render_context
+                                .command_encoder()
+                                .begin_compute_pass(&ComputePassDescriptor::default());
+                            let update_pipeline = pipeline_cache
+                                .get_compute_pipeline(pipeline.horizontalFFT_pipeline)
+                                .unwrap();
+                            pass.set_bind_group(0, &bind_group.0, &[]);
+                            pass.set_pipeline(update_pipeline);
+                            pass.dispatch_workgroups(1, 256, 1);
+                        }
+
+                        {
+                            let mut pass = render_context
+                                .command_encoder()
+                                .begin_compute_pass(&ComputePassDescriptor::default());
+                            let update_pipeline = pipeline_cache
+                                .get_compute_pipeline(pipeline.verticalFFT_pipeline)
+                                .unwrap();
+                            pass.set_bind_group(0, &bind_group.0, &[]);
+                            pass.set_pipeline(update_pipeline);
+                            pass.dispatch_workgroups(1, 256, 1);
+                        }
+
+                        {
+                            let mut pass = render_context
+                                .command_encoder()
+                                .begin_compute_pass(&ComputePassDescriptor::default());
+                            let update_pipeline = pipeline_cache
+                                .get_compute_pipeline(pipeline.assembleMaps_pipeline)
+                                .unwrap();
+                            pass.set_bind_group(0, &bind_group.0, &[]);
+                            pass.set_pipeline(update_pipeline);
+                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
+                        }
                     }
                 }
             } // First pass ends here
