@@ -27,7 +27,7 @@ fn main() {
                     address_mode_u: ImageAddressMode::Repeat,
                     address_mode_v: ImageAddressMode::Repeat,
                     address_mode_w: ImageAddressMode::Repeat,
-                    // mag_filter: ImageFilterMode::Linear,
+                    mag_filter: ImageFilterMode::Linear,
                     ..Default::default()
                 },
             }),
@@ -49,12 +49,6 @@ fn setup(
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
     // Create and save a handle to the mesh.
-    let plane: Handle<Mesh> = meshes.add(Mesh::from(
-        Plane3d::default()
-            .mesh()
-            .size(1000.0, 1000.0)
-            .subdivisions(1000),
-    ));
     let skybox_handle = asset_server.load("textures/Ryfjallet_cubemap_bc7.ktx2");
     // let skybox_handle = asset_server.load("textures/cubemap.ktx2");
 
@@ -141,68 +135,143 @@ fn setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 10.01,
-        angle: 90.0,
-        spreadBlend: 1.0,
-        swell: 2.001,
-        alpha: 10.0,
-        peakOmega: 0.1,
+        scale: 0.001,
+        angle: 3.14,
+        spreadBlend: 0.4,
+        swell: 0.2,
+        alpha: 0.01,
+        peakOmega: 5.0,
         gamma: 10.1,
-        shortWavesFade: 0.001,
+        shortWavesFade: 0.005,
+    };
+
+    let spectrum1: SpectrumParameters = SpectrumParameters {
+        scale: 0.001,
+        angle: 90.0,
+        spreadBlend: 0.5,
+        swell: 2.0,
+        alpha: 0.01,
+        peakOmega: 6.0,
+        gamma: 10.1,
+        shortWavesFade: 0.005,
+    };
+
+    let spectrum2: SpectrumParameters = SpectrumParameters {
+        scale: 0.001,
+        angle: 1.6,
+        spreadBlend: 0.8,
+        swell: 0.00,
+        alpha: 0.01,
+        peakOmega: 8.0,
+        gamma: 1.0,
+        shortWavesFade: 0.005,
     };
 
     let spectrum_array = [
         spectrum.clone(),
         spectrum.clone(),
-        spectrum.clone(),
-        spectrum.clone(),
-        spectrum.clone(),
-        spectrum.clone(),
+        spectrum1.clone(),
+        spectrum1.clone(),
+        spectrum2.clone(),
+        spectrum2.clone(),
     ];
 
     let spectrums = buffers.add(ShaderStorageBuffer::from(spectrum_array));
 
     let water_resource = WaterResource {
         _N: 256,
-        _seed: 10,
-        _LengthScale0: 0.1,
-        _LengthScale1: 10.0,
-        _LengthScale2: 100.0,
+        _seed: 1,
+        _LengthScale0: 10.0,
+        _LengthScale1: 8.0,
+        _LengthScale2: 2.0,
         _LowCutoff: 0.0001,
         _HighCutoff: 1000.0,
         _Gravity: 9.8,
-        _RepeatTime: 200.0,
+        _RepeatTime: 20.0,
         _FrameTime: 0.0,
-        _Lambda: Vec2 { x: 1.0, y: 5.0 },
+        _Lambda: Vec2 { x: 0.8, y: 0.8 },
         _Spectrums: spectrums,
         _SpectrumTextures: image1.clone(),
         _InitialSpectrumTextures: image0.clone(),
         _DisplacementTextures: image2.clone(),
-        _SlopeTextures: image3,
-        _Depth: 1000000.0,
+        _SlopeTextures: image3.clone(),
+        _Depth: 10000.0,
         _FourierTarget: image1.clone(),
-        _FoamBias: 0.0,
+        _FoamBias: 1.0,
         _FoamDecayRate: 2.0,
-        _FoamAdd: 1.0,
+        _FoamAdd: 10.0,
         _FoamThreshold: 0.0,
     };
 
     commands.insert_resource(water_resource);
+    let mat = materials.add(CustomMaterial {
+        color: LinearRgba::new(0.0, 0.2, 1.0, 1.0),
+        skybox_texture: skybox_handle.clone(),
+        displacement: image2.clone(),
+        slope: image3.clone(),
+        tile_1: 2024.0,
+        tile_2: 600.0,
+        tile_3: 120.0,
+        foam_1: 0.1,
+        foam_2: 1.0,
+        foam_3: 0.4,
+        alpha_mode: AlphaMode::Opaque,
+    });
 
-    commands.spawn((
-        Mesh3d(plane),
-        MeshMaterial3d(materials.add(CustomMaterial {
-            color: LinearRgba::new(0.0, 0.2, 1.0, 1.0),
-            skybox_texture: skybox_handle.clone(),
-            displacement: image2.clone(),
-            alpha_mode: AlphaMode::Opaque,
-        })),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+    let plane: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(1000.0, 1000.0)
+            .subdivisions(1000),
     ));
+
+    let plane2: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(1000.0, 1000.0)
+            .subdivisions(500),
+    ));
+
+    let plane3: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(3000.0, 3000.0)
+            .subdivisions(100),
+    ));
+
+    for i in -5..6 {
+        for j in -5..6 {
+            if i == 0 && j == 0 {
+                for k in -1..2 {
+                    for l in -1..2 {
+                        if k == 0 && l == 0 {
+                            commands.spawn((
+                                Mesh3d(plane.clone()),
+                                MeshMaterial3d(mat.clone()),
+                                Transform::from_xyz(i as f32 * 1000.0, 0.0, j as f32 * 1000.0),
+                            ));
+                        } else {
+                            commands.spawn((
+                                Mesh3d(plane2.clone()),
+                                MeshMaterial3d(mat.clone()),
+                                Transform::from_xyz(k as f32 * 1000.0, 0.0, l as f32 * 1000.0),
+                            ));
+                        }
+                    }
+                }
+            } else {
+                commands.spawn((
+                    Mesh3d(plane3.clone()),
+                    MeshMaterial3d(mat.clone()),
+                    Transform::from_xyz(i as f32 * 3000.0, 0.0, j as f32 * 3000.0),
+                ));
+            }
+        }
+    }
 }
 
 fn update_time(time: Res<Time>, mut water_resource: ResMut<WaterResource>) {
-    water_resource._FrameTime += time.delta_secs() * 0.1;
+    water_resource._FrameTime += time.delta_secs() * 0.2;
 }
 
 fn generate_custom_mesh() -> Mesh {
@@ -251,6 +320,21 @@ struct CustomMaterial {
 
     #[texture(3, dimension = "2d_array")]
     displacement: Handle<Image>,
+
+    #[texture(4, dimension = "2d_array")]
+    slope: Handle<Image>,
+    #[uniform(5)]
+    tile_1: f32,
+    #[uniform(6)]
+    tile_2: f32,
+    #[uniform(7)]
+    tile_3: f32,
+    #[uniform(8)]
+    foam_1: f32,
+    #[uniform(9)]
+    foam_2: f32,
+    #[uniform(10)]
+    foam_3: f32,
 
     alpha_mode: AlphaMode,
 }

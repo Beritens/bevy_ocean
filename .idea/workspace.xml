@@ -7,12 +7,11 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1e8aeb3d-9b44-4181-ba9e-edebcf5d5b9c" name="Changes" comment="feeding compute shader texture into custom shader">
+    <list default="true" id="1e8aeb3d-9b44-4181-ba9e-edebcf5d5b9c" name="Changes" comment="fft">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/assets/shaders/fft_water.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/fft_water.wgsl" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/water.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/water.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -142,7 +141,9 @@
       <workItem from="1734890042339" duration="5185000" />
       <workItem from="1735039758354" duration="19823000" />
       <workItem from="1735088263146" duration="2789000" />
-      <workItem from="1735133994652" duration="30880000" />
+      <workItem from="1735133994652" duration="30962000" />
+      <workItem from="1735205607576" duration="3000" />
+      <workItem from="1735205628230" duration="36861000" />
     </task>
     <task id="LOCAL-00001" summary="simple gerstner waves with cook torrance shader">
       <option name="closed" value="true" />
@@ -160,7 +161,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735090485895</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="fft">
+      <option name="closed" value="true" />
+      <created>1735184806137</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1735184806137</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -169,7 +178,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="simple gerstner waves with cook torrance shader" />
     <MESSAGE value="feeding compute shader texture into custom shader" />
-    <option name="LAST_COMMIT_MESSAGE" value="feeding compute shader texture into custom shader" />
+    <MESSAGE value="fft" />
+    <option name="LAST_COMMIT_MESSAGE" value="fft" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

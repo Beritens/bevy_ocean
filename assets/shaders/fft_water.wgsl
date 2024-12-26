@@ -247,7 +247,7 @@ fn updateSpectrum(@builtin(global_invocation_id) invocation_id: vec3<u32>, @buil
         let kMag = length(K);
         var kMagRcp = 1.0 / kMag;
         if (kMag < 0.0001) {
-            kMagRcp = 10000.0f;
+            kMagRcp = 1.0;
         }
 
         let w_0 = 2.0 * PI / _RepeatTime;
@@ -256,22 +256,22 @@ fn updateSpectrum(@builtin(global_invocation_id) invocation_id: vec3<u32>, @buil
         let htilde = ComplexMult(h0, exponent) + ComplexMult(h0conj, vec2(exponent.x, -exponent.y));
         let ih = vec2(-htilde.y, htilde.x);
 
-        let displacementX = ih * K.x * K.x * kMagRcp;
+        let displacementX = ih * K.x * kMagRcp;
         let displacementY = htilde;
-        let displacementZ = ih * K.x * K.y * kMagRcp;
+        let displacementZ = ih * K.y * kMagRcp;
 
         let displacementX_dx = -htilde * K.x * K.x * kMagRcp;
         let displacementY_dx = ih * K.x;
         let displacementZ_dx = -htilde * K.x * K.y * kMagRcp;
 
         let displacementY_dz = ih * K.y;
-        let displacementZ_dz = -htilde * K.xy * K.y * kMagRcp;
+        let displacementZ_dz = -htilde * K.y * K.y * kMagRcp;
 
         let htildeDisplacementX = vec2(displacementX.x - displacementZ.y, displacementX.y + displacementZ.x);
         let htildeDisplacementZ = vec2(displacementY.x - displacementZ_dx.y, displacementY.y + displacementZ_dx.x);
 
         let htildeSlopeX = vec2(displacementY_dx.x - displacementY_dz.y, displacementY_dx.y + displacementY_dz.x);
-        let htildeSlopeZ = vec2(displacementY_dx.x - displacementZ_dz.y, displacementY_dx.y + displacementZ_dz.x);
+        let htildeSlopeZ = vec2(displacementY_dx.x - displacementZ_dz.y, displacementX_dx.y + displacementZ_dz.x);
 
         textureStore(_SpectrumTextures, invocation_id.xy, i * 2, vec4(htildeDisplacementX, htildeDisplacementZ));
         textureStore(_SpectrumTextures, invocation_id.xy, i * 2 + 1, vec4(htildeSlopeX, htildeSlopeZ));
@@ -348,7 +348,11 @@ fn Permute(data: vec4<f32>, id: vec3<f32>) -> vec4<f32> {
 @compute @workgroup_size(8, 8, 1)
 fn assembleMaps(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
     for (var i: u32 = 0u; i < 3u; i++) {
-        let spec1 = textureLoad(_SpectrumTextures, invocation_id.xy, i * 2);
+        let spec1 = textureLoad(
+            _SpectrumTextures,
+            invocation_id.xy,
+            i * 2,
+        );
         let spec2 = textureLoad(_SpectrumTextures, invocation_id.xy, i * 2 + 1);
         let htildeDisplacement = Permute(spec1, vec3<f32>(invocation_id));
         let htildeSlope = Permute(spec2, vec3<f32>(invocation_id));
@@ -363,8 +367,6 @@ fn assembleMaps(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builti
         let displacement = vec3(_Lambda.x * dxdz.x, dydxz.x, _Lambda.y * dxdz.y);
 
         let slopes = dyxdyz.xy / (1.0 + abs(dxxdzz * _Lambda));
-
-        let covariance = slopes.x * slopes.y;
 
         var foam = textureLoad(_DisplacementTextures, invocation_id.xy, i).a;
 
