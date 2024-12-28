@@ -43,10 +43,8 @@ fn main() {
         .add_plugins(PanOrbitCameraPlugin)
         .add_plugins(WaterPlugin)
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (update_time, receive_displacement_texture, swim, movement),
-        )
+        .add_systems(PreUpdate, receive_displacement_texture)
+        .add_systems(Update, (update_time, swim, movement))
         .run();
 }
 
@@ -217,7 +215,7 @@ fn setup(
         _Gravity: 9.8,
         _RepeatTime: 20.0,
         _FrameTime: 0.0,
-        _Lambda: Vec2 { x: 0.8, y: 0.8 },
+        _Lambda: Vec2 { x: 0.5, y: 0.5 },
         _Spectrums: spectrums,
         _SpectrumTextures: image1.clone(),
         _InitialSpectrumTextures: image0.clone(),
@@ -353,12 +351,12 @@ fn setup(
         // bounds for better visual quality.
     ));
 
-    for x in -10..10 {
-        for z in -10..10 {
+    for x in -20..20 {
+        for z in -20..20 {
             commands.spawn((
                 Buoyant {},
                 Control {},
-                Mesh3d(meshes.add(Sphere::new(5.0))),
+                Mesh3d(meshes.add(Sphere::new(2.0))),
                 MeshMaterial3d(materials.add(Color::WHITE)),
                 Transform::from_xyz(10.0 * x as f32, 50.0, 10.0 * z as f32),
             ));
@@ -393,34 +391,49 @@ fn movement(keys: Res<ButtonInput<KeyCode>>, mut characters: Query<&mut Transfor
     }
 }
 
-fn get_displacement(scale: f32, image: &Image, pos: UVec2) -> Vec3 {
+fn get_displacement(n: i32, scale: f32, image: &Image, pos: Vec2) -> Vec3 {
+    let scaled = pos / scale * n as f32;
+    let x1y1 = Vec2::new(scaled.x.floor(), scaled.y.floor());
+    let x2y1 = Vec2::new(scaled.x.ceil(), scaled.y.floor());
+    let x1y2 = Vec2::new(scaled.x.floor(), scaled.y.ceil());
+    let x2y2 = Vec2::new(scaled.x.ceil(), scaled.y.ceil());
+    let x_percent = scaled.x - x1y1.x;
+    let y_percent = scaled.y - x1y1.y;
+    let displacement_x1_y1 = get_displacement_at_coord(scale, image, get_coords(n, x1y1));
+    let displacement_x2_y1 = get_displacement_at_coord(scale, image, get_coords(n, x2y1));
+    let displacement_x1_y2 = get_displacement_at_coord(scale, image, get_coords(n, x1y2));
+    let displacement_x2_y2 = get_displacement_at_coord(scale, image, get_coords(n, x2y2));
+    return x_percent * y_percent * displacement_x2_y2
+        + (1.0 - x_percent) * y_percent * displacement_x1_y2
+        + x_percent * (1.0 - y_percent) * displacement_x2_y1
+        + (1.0 - x_percent) * (1.0 - y_percent) * displacement_x1_y1;
+}
+
+fn get_displacement_at_coord(scale: f32, image: &Image, pos: UVec2) -> Vec3 {
     let col = image.get_color_at(pos.x, pos.y).unwrap().to_linear();
     return Vec3::new(col.red * scale, col.green * scale, col.blue * scale);
 }
 
-fn get_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> UVec2 {
-    let coords = UVec2::new(
-        modulo((pos.x / scale * (n as f32)) as i32, n),
-        modulo((pos.y / scale * (n as f32)) as i32, n),
-    );
-    return coords;
+fn get_coords(n: i32, pos: Vec2) -> UVec2 {
+    UVec2::new(modulo((pos.x) as i32, n), modulo((pos.y) as i32, n))
 }
 
-fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> UVec2 {
+fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> Vec2 {
     let mut adjustedPos: Vec2 = Vec2::from(pos);
     let mut factor = 1.0;
-    for i in 0..4 {
-        let coords = get_coords(256, 202.0, adjustedPos, image);
-        let displacement = get_displacement(202.0, image, coords);
+    for i in 0..3 {
+        // let coords = get_coords(256, 202.0, adjustedPos, image);
+        let displacement = get_displacement(n, 202.0, image, adjustedPos);
         let newPoint = Vec2::new(
             adjustedPos.x + displacement.x,
             adjustedPos.y + displacement.z,
         );
         adjustedPos.x += (pos.x - newPoint.x) * factor;
         adjustedPos.y += (pos.y - newPoint.y) * factor;
-        factor *= 0.9
+        factor *= 0.95
     }
-    return get_coords(n, scale, adjustedPos, image);
+    // return get_coords(n, scale, adjustedPos, image);
+    return adjustedPos;
 }
 
 fn swim(
@@ -435,7 +448,8 @@ fn swim(
                 Vec2::new(transform.translation.x, transform.translation.z),
                 &displacement_image.displacement,
             );
-            let displacement = get_displacement(202.0, &displacement_image.displacement, coords);
+            let displacement =
+                get_displacement(256, 202.0, &displacement_image.displacement, coords);
             transform.translation.y = displacement.y;
         }
     }
@@ -473,7 +487,7 @@ fn update_time(
     // } else {
     //     println!("Cursor is not in the game window.");
     // }
-    water_resource._FrameTime += time.delta_secs() * 0.6;
+    water_resource._FrameTime += time.delta_secs() * 0.2;
 }
 
 fn generate_custom_mesh() -> Mesh {
