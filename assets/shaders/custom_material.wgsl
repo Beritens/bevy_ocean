@@ -69,8 +69,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
     let w_pos = mesh_position_local_to_world(get_world_from_local(vertex.instance_index),vec4<f32>(vertex.position, 1.0),).xyz;
     var pos = vertex.position +  textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_1, 0, 0.0).xyz * tile_1;
-    pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_2 + vec2(0.1, 0.4), 1, 0.0).xyz * tile_2;
-    pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_3+ vec2(0.5, 0.000003), 2, 0.0).xyz * tile_3;
+    pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_2, 1, 0.0).xyz * tile_2;
+    pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_3, 2, 0.0).xyz * tile_3;
 //    for (var i = 0; i < 0; i++) {
 //
 //        let info = GerstWave(waves[i], vertex.position);
@@ -127,13 +127,13 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     //    let info2 =  GerstWave(vec4(1.0,0.6,0.25,31.0), mesh.world_position.xyz);
     //    let info3 =  GerstWave(vec4(1.0,1.3,0.25,18.0), mesh.world_position.xyz);
     var slope = textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_1, 0).xy;
-    slope += textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_2+ vec2(0.1, 0.4), 1).xy;
-    slope += textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_3+ vec2(0.5, 0.000003), 2).xy;
+    slope += textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_2, 1).xy;
+    slope += textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_3, 2).xy;
     slope *= 10.0;
 
     let displacement1 =  textureSample(displacement_texture, textureSampler, mesh.world_position.xz / tile_1, 0) ;
-    let displacement2 = textureSample(displacement_texture, textureSampler, mesh.world_position.xz  / tile_2 + vec2(0.1, 0.4), 1);
-    let displacement3 = textureSample(displacement_texture, textureSampler, mesh.world_position.xz / tile_3+ vec2(0.5, 0.000003), 2);
+    let displacement2 = textureSample(displacement_texture, textureSampler, mesh.world_position.xz  / tile_2, 1);
+    let displacement3 = textureSample(displacement_texture, textureSampler, mesh.world_position.xz / tile_3, 2);
     let displacement = (displacement1* tile_1 + displacement2 * tile_2 + displacement3 * tile_3).xyz;
 
 
