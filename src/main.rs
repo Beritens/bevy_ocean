@@ -44,7 +44,7 @@ fn main() {
         .add_plugins(WaterPlugin)
         .add_systems(Startup, setup)
         .add_systems(PreUpdate, receive_displacement_texture)
-        .add_systems(Update, (update_time, swim, movement))
+        .add_systems(Update, (update_time, movement, swim))
         .run();
 }
 
@@ -343,7 +343,7 @@ fn setup(
         },
         Transform {
             translation: Vec3::new(0.0, 2.0, 0.0),
-            rotation: Quat::from_rotation_x(-1.6),
+            rotation: Quat::from_rotation_x(-2.6),
             ..default()
         },
         // The default cascade config is designed to handle large scenes.
@@ -351,12 +351,12 @@ fn setup(
         // bounds for better visual quality.
     ));
 
-    for x in -20..20 {
-        for z in -20..20 {
+    for x in -30..30 {
+        for z in -30..30 {
             commands.spawn((
                 Buoyant {},
                 Control {},
-                Mesh3d(meshes.add(Sphere::new(2.0))),
+                Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                 MeshMaterial3d(materials.add(Color::WHITE)),
                 Transform::from_xyz(10.0 * x as f32, 50.0, 10.0 * z as f32),
             ));
@@ -414,8 +414,14 @@ fn get_displacement_at_coord(scale: f32, image: &Image, pos: UVec2) -> Vec3 {
     return Vec3::new(col.red * scale, col.green * scale, col.blue * scale);
 }
 
+// fn get_coords(n: i32, pos: Vec2) -> UVec2 {
+//     UVec2::new(modulo((pos.x) as i32, n), modulo((pos.y) as i32, n))
+// }
 fn get_coords(n: i32, pos: Vec2) -> UVec2 {
-    UVec2::new(modulo((pos.x) as i32, n), modulo((pos.y) as i32, n))
+    UVec2::new(
+        (pos.x as i32 & (n - 1)) as u32,
+        (pos.y as i32 & (n - 1)) as u32,
+    )
 }
 
 fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> Vec2 {
@@ -428,6 +434,9 @@ fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> Vec2 {
             adjustedPos.x + displacement.x,
             adjustedPos.y + displacement.z,
         );
+        // if (pos - newPoint).length_squared() < 0.01 {
+        //     return adjustedPos;
+        // }
         adjustedPos.x += (pos.x - newPoint.x) * factor;
         adjustedPos.y += (pos.y - newPoint.y) * factor;
         factor *= 0.95
@@ -441,17 +450,20 @@ fn swim(
     displacement_image_query: Query<(&DisplacementImage)>,
 ) {
     if let Ok(displacement_image) = displacement_image_query.get_single() {
-        for mut transform in buoyant_query.iter_mut() {
+        let image = &displacement_image.displacement;
+        let scale = 202.0;
+        let n = 256;
+        buoyant_query.par_iter_mut().for_each(|mut transform| {
             let coords = get_adjusted_coords(
-                256,
-                202.0,
+                n,
+                scale,
                 Vec2::new(transform.translation.x, transform.translation.z),
-                &displacement_image.displacement,
+                image,
             );
             let displacement =
                 get_displacement(256, 202.0, &displacement_image.displacement, coords);
             transform.translation.y = displacement.y;
-        }
+        });
     }
 }
 fn receive_displacement_texture(
