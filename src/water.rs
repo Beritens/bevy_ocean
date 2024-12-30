@@ -1,400 +1,447 @@
-use bevy::asset::Handle;
+use crate::water_compute::{SpectrumParameters, WaterResource};
+use bevy::app::{App, Plugin, PreUpdate, Startup, Update};
+use bevy::asset::{Asset, Handle, RenderAssetUsages};
+use bevy::color::LinearRgba;
 use bevy::image::Image;
+use bevy::math::{UVec2, Vec3};
+use bevy::pbr::{Material, MaterialPlugin, NotShadowCaster};
 use bevy::prelude::{
-    App, Commands, DirectAssetAccessExt, FromWorld, IntoSystemConfigs, Plugin, Res, Resource, Vec2,
-    World,
+    default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d,
+    MeshMaterial3d, Meshable, Plane3d, Query, Res, ResMut, StandardMaterial, Time, Transform,
+    Trigger, TypePath, Vec2, Window, With,
 };
-use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
-use bevy::render::render_asset::RenderAssets;
-use bevy::render::render_graph::{RenderGraph, RenderLabel};
-use bevy::render::render_resource::binding_types::texture_storage_2d;
+use bevy::render::extract_resource::ExtractResourcePlugin;
+use bevy::render::gpu_readback::{Readback, ReadbackComplete};
+use bevy::render::render_graph::RenderGraph;
 use bevy::render::render_resource::{
-    AsBindGroup, BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries,
-    BufferDescriptor, BufferUsages, CachedComputePipelineId, CachedPipelineState,
-    ComputePassDescriptor, ComputePipelineDescriptor, PipelineCache, ShaderStages, ShaderType,
-    StorageTextureAccess, TextureFormat,
+    AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages,
 };
-use bevy::render::renderer::{RenderContext, RenderDevice};
-use bevy::render::storage::{GpuShaderStorageBuffer, ShaderStorageBuffer};
-use bevy::render::texture::{FallbackImage, GpuImage};
-use bevy::render::{render_graph, Render, RenderApp, RenderSet};
-use std::borrow::Cow;
-
-const SHADER_ASSET_PATH: &str = "shaders/fft_water.wgsl";
-
-const WORKGROUP_SIZE: u32 = 8;
+use bevy::render::storage::ShaderStorageBuffer;
+use bevy::render::{Render, RenderApp, RenderSet};
+use bevy::window::PrimaryWindow;
+use crossbeam_channel::{Receiver, Sender};
 
 pub struct WaterPlugin;
 
-#[derive(Debug, Clone, ShaderType)]
-pub struct SpectrumParameters {
-    pub scale: f32,
-    pub angle: f32,
-    pub spreadBlend: f32,
-    pub swell: f32,
-    pub alpha: f32,
-    pub peakOmega: f32,
-    pub gamma: f32,
-    pub shortWavesFade: f32,
+const SHADER_ASSET_PATH: &str = "shaders/custom_material.wgsl";
+
+#[derive(Component)]
+struct DisplacementReceiver {
+    receiver: Receiver<Image>,
 }
 
-#[derive(Resource, Clone, ExtractResource, AsBindGroup)]
-pub struct WaterResource {
-    #[uniform(0)]
-    pub _N: u32,
-    #[uniform(1)]
-    pub _seed: i32,
-    #[uniform(2)]
-    pub _LengthScale0: f32,
-    #[uniform(3)]
-    pub _LengthScale1: f32,
-    #[uniform(4)]
-    pub _LengthScale2: f32,
-    #[uniform(5)]
-    pub _LowCutoff: f32,
-    #[uniform(6)]
-    pub _HighCutoff: f32,
-    #[uniform(7)]
-    pub _Gravity: f32,
-    #[uniform(8)]
-    pub _RepeatTime: f32,
-    #[uniform(9)]
-    pub _FrameTime: f32,
-
-    #[uniform(10)]
-    pub _Lambda: Vec2,
-
-    #[storage(11, visibility(compute), read_only)]
-    pub _Spectrums: Handle<ShaderStorageBuffer>,
-
-    #[storage_texture(12, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
-    pub _SpectrumTextures: Handle<Image>,
-
-    #[storage_texture(13, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
-    pub _InitialSpectrumTextures: Handle<Image>,
-
-    #[storage_texture(14, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
-    pub _DisplacementTextures: Handle<Image>,
-
-    #[storage_texture(15, image_format = Rg32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
-    pub _SlopeTextures: Handle<Image>,
-
-    #[uniform(16)]
-    pub _Depth: f32,
-
-    #[storage_texture(17, image_format = Rgba32Float, access = ReadWrite, dimension = "2d_array", visibility(compute))]
-    pub _FourierTarget: Handle<Image>,
-
-    #[uniform(18)]
-    pub _FoamBias: f32,
-
-    #[uniform(19)]
-    pub _FoamDecayRate: f32,
-
-    #[uniform(20)]
-    pub _FoamAdd: f32,
-
-    #[uniform(21)]
-    pub _FoamThreshold: f32,
+#[derive(Component)]
+pub struct DisplacementImage {
+    pub displacement: Image,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-struct WaterLabel;
-
-impl Plugin for WaterPlugin {
+impl Plugin for crate::water::WaterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractResourcePlugin::<WaterResource>::default());
-        let render_app = app.sub_app_mut(RenderApp);
+        app.add_plugins(crate::water_compute::WaterComputePlugin);
 
-        render_app.add_systems(
-            Render,
-            prepare_bind_group.in_set(RenderSet::PrepareBindGroups),
-        );
-
-        let mut render_graph = render_app.world_mut().resource_mut::<RenderGraph>();
-        render_graph.add_node(WaterLabel, WaterNode::default());
-        render_graph.add_node_edge(WaterLabel, bevy::render::graph::CameraDriverLabel);
-    }
-
-    fn finish(&self, app: &mut App) {
-        let render_app = app.sub_app_mut(RenderApp);
-        render_app.init_resource::<WaterPipeline>();
+        app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
+        app.add_systems(Startup, water_setup);
+        app.add_systems(PreUpdate, receive_displacement_texture);
+        app.add_systems(Update, update_time);
     }
 }
 
-#[derive(Resource)]
-struct WaterBindGroup(BindGroup);
-
-fn prepare_bind_group(
+fn water_setup(
     mut commands: Commands,
-    pipeline: Res<WaterPipeline>,
-    gpu_images: Res<RenderAssets<GpuImage>>,
-    gpu_shader_storage_buffer: Res<RenderAssets<GpuShaderStorageBuffer>>,
-    fallback_images: Res<FallbackImage>,
-    water_resource: Res<WaterResource>,
-    render_device: Res<RenderDevice>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut custom_materials: ResMut<Assets<CustomMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
-    let mut bindGroupParam = (gpu_images, fallback_images, gpu_shader_storage_buffer);
-    match water_resource.as_bind_group(
-        &pipeline.bind_group_layout,
-        &render_device,
-        &mut bindGroupParam,
-    ) {
-        Ok(bind_group) => {
-            commands.insert_resource(WaterBindGroup(bind_group.bind_group));
-        }
-        Err(e) => {
-            eprintln!("Failed to create bind group: {}", e);
-        }
-    }
-}
+    // Create and save a handle to the mesh.
+    let skybox_handle = asset_server.load("textures/Ryfjallet_cubemap_bc7.ktx2");
 
-#[derive(Resource)]
-struct WaterPipeline {
-    bind_group_layout: BindGroupLayout,
-    initSpectrum_pipeline: CachedComputePipelineId,
-    packSpectrumConjugates_pipeline: CachedComputePipelineId,
-    updateSpectrum_pipeline: CachedComputePipelineId,
-    horizontalFFT_pipeline: CachedComputePipelineId,
-    verticalFFT_pipeline: CachedComputePipelineId,
-    assembleMaps_pipeline: CachedComputePipelineId,
-}
+    let mut initial_spectrum_texture = Image::new_fill(
+        Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 3,
+        },
+        TextureDimension::D2,
+        &[
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        ],
+        TextureFormat::Rgba32Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
 
-impl FromWorld for WaterPipeline {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-        let bind_group_layout = WaterResource::bind_group_layout(render_device);
-        let shader = world.load_asset(SHADER_ASSET_PATH);
-        let pipeline_cache = world.resource::<PipelineCache>();
-        let initSpectrum_pipeline =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: vec![bind_group_layout.clone()],
-                push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
-                shader_defs: vec![],
-                entry_point: Cow::from("initSpectrum"),
-                zero_initialize_workgroup_memory: false,
-            });
-        let packSpectrumConjugates_pipeline =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: vec![bind_group_layout.clone()],
-                push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
-                shader_defs: vec![],
-                entry_point: Cow::from("packSpectrumConjugate"),
-                zero_initialize_workgroup_memory: false,
-            });
-        let updateSpectrum_pipeline =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: vec![bind_group_layout.clone()],
-                push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
-                shader_defs: vec![],
-                entry_point: Cow::from("updateSpectrum"),
-                zero_initialize_workgroup_memory: false,
-            });
+    initial_spectrum_texture.texture_descriptor.usage =
+        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
 
-        let horizontalFFT_pipeline =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: vec![bind_group_layout.clone()],
-                push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
-                shader_defs: vec![],
-                entry_point: Cow::from("horizontalFFT"),
-                zero_initialize_workgroup_memory: false,
-            });
-        let verticalFFT_pipeline =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: vec![bind_group_layout.clone()],
-                push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
-                shader_defs: vec![],
-                entry_point: Cow::from("verticalFFT"),
-                zero_initialize_workgroup_memory: false,
-            });
+    let mut spectrum_texture = Image::new_fill(
+        Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 6,
+        },
+        TextureDimension::D2,
+        &[
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        ],
+        TextureFormat::Rgba32Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
 
-        let assembleMaps_pipeline =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: vec![bind_group_layout.clone()],
-                push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
-                shader_defs: vec![],
-                entry_point: Cow::from("assembleMaps"),
-                zero_initialize_workgroup_memory: false,
-            });
+    spectrum_texture.texture_descriptor.usage =
+        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
 
-        WaterPipeline {
-            bind_group_layout,
-            initSpectrum_pipeline,
-            packSpectrumConjugates_pipeline,
-            updateSpectrum_pipeline,
-            horizontalFFT_pipeline,
-            verticalFFT_pipeline,
-            assembleMaps_pipeline,
-        }
-    }
-}
+    let mut displacement_texture = Image::new_fill(
+        Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 3,
+        },
+        TextureDimension::D2,
+        &[
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        ],
+        TextureFormat::Rgba32Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
 
-enum WaterState {
-    Loading,
-    Init,
-    Update,
-}
+    displacement_texture.texture_descriptor.usage = TextureUsages::COPY_DST
+        | TextureUsages::STORAGE_BINDING
+        | TextureUsages::TEXTURE_BINDING
+        | TextureUsages::COPY_SRC;
 
-struct WaterNode {
-    state: WaterState,
-}
+    let mut slope_texture = Image::new_fill(
+        Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 3,
+        },
+        TextureDimension::D2,
+        &[255, 255, 255, 255, 255, 255, 255, 255],
+        TextureFormat::Rg32Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
 
-impl Default for WaterNode {
-    fn default() -> Self {
-        Self {
-            state: WaterState::Loading,
-        }
-    }
-}
+    slope_texture.texture_descriptor.usage =
+        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
 
-impl render_graph::Node for WaterNode {
-    fn update(&mut self, world: &mut World) {
-        let pipeline = world.resource::<WaterPipeline>();
-        let pipeline_cache = world.resource::<PipelineCache>();
+    let image0 = images.add(initial_spectrum_texture);
+    let image1 = images.add(spectrum_texture);
+    let image2 = images.add(displacement_texture);
+    let image3 = images.add(slope_texture);
 
-        // if the corresponding pipeline has loaded, transition to the next stage
-        match self.state {
-            WaterState::Loading => {
-                let mut both_ok: usize = 0;
-                let pipelines = [
-                    pipeline.initSpectrum_pipeline,
-                    pipeline.packSpectrumConjugates_pipeline,
-                    pipeline.updateSpectrum_pipeline,
-                    pipeline.verticalFFT_pipeline,
-                    pipeline.horizontalFFT_pipeline,
-                    pipeline.assembleMaps_pipeline,
-                ];
+    let spectrum: SpectrumParameters = SpectrumParameters {
+        scale: 0.001,
+        angle: 3.14,
+        spreadBlend: 0.0,
+        swell: 1.0,
+        alpha: 0.01,
+        peakOmega: 0.0,
+        gamma: 10.1,
+        shortWavesFade: 0.005,
+    };
 
-                for &pipeline in pipelines.iter() {
-                    match pipeline_cache.get_compute_pipeline_state(pipeline) {
-                        CachedPipelineState::Ok(_) => {
-                            both_ok += 1;
-                        }
-                        CachedPipelineState::Err(err) => {
-                            panic!("Initializing assets/{SHADER_ASSET_PATH}:\n{err}");
-                        }
-                        _ => {}
-                    }
-                }
+    let spectrum1: SpectrumParameters = SpectrumParameters {
+        scale: 0.00,
+        angle: 3.14,
+        spreadBlend: 0.9,
+        swell: 1.0,
+        alpha: 0.01,
+        peakOmega: 2.0,
+        gamma: 10.1,
+        shortWavesFade: 0.005,
+    };
 
-                if both_ok == pipelines.len() {
-                    self.state = WaterState::Init;
-                }
-            }
-            WaterState::Init => {
-                if let CachedPipelineState::Ok(_) =
-                    pipeline_cache.get_compute_pipeline_state(pipeline.initSpectrum_pipeline)
-                {
-                    self.state = WaterState::Update;
-                }
-            }
-            WaterState::Update => {
-                self.state = WaterState::Update;
-            }
-        }
-    }
+    let spectrum2: SpectrumParameters = SpectrumParameters {
+        scale: 0.000,
+        angle: 1.6,
+        spreadBlend: 0.8,
+        swell: 0.00,
+        alpha: 0.01,
+        peakOmega: 8.0,
+        gamma: 1.0,
+        shortWavesFade: 0.005,
+    };
 
-    fn run(
-        &self,
-        _graph: &mut render_graph::RenderGraphContext,
-        render_context: &mut RenderContext,
-        world: &World,
-    ) -> Result<(), render_graph::NodeRunError> {
-        if let Some(bind_group) = &world.get_resource::<WaterBindGroup>() {
-            let pipeline_cache = world.resource::<PipelineCache>();
-            let pipeline = world.resource::<WaterPipeline>();
-            {
-                match self.state {
-                    WaterState::Loading => {}
-                    WaterState::Init => {
-                        {
-                            let mut pass = render_context
-                                .command_encoder()
-                                .begin_compute_pass(&ComputePassDescriptor::default());
-                            let init_pipeline = pipeline_cache
-                                .get_compute_pipeline(pipeline.initSpectrum_pipeline)
-                                .unwrap();
-                            pass.set_bind_group(0, &bind_group.0, &[]);
-                            pass.set_pipeline(init_pipeline);
-                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
-                        }
+    let spectrum_array = [
+        spectrum.clone(),
+        spectrum.clone(),
+        spectrum1.clone(),
+        spectrum1.clone(),
+        spectrum2.clone(),
+        spectrum2.clone(),
+    ];
 
-                        {
-                            let mut pass = render_context
-                                .command_encoder()
-                                .begin_compute_pass(&ComputePassDescriptor::default());
-                            let init_pipeline = pipeline_cache
-                                .get_compute_pipeline(pipeline.packSpectrumConjugates_pipeline)
-                                .unwrap();
-                            pass.set_bind_group(0, &bind_group.0, &[]);
-                            pass.set_pipeline(init_pipeline);
-                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
-                        }
-                    }
-                    WaterState::Update => {
-                        {
-                            let mut pass = render_context
-                                .command_encoder()
-                                .begin_compute_pass(&ComputePassDescriptor::default());
-                            let update_pipeline = pipeline_cache
-                                .get_compute_pipeline(pipeline.updateSpectrum_pipeline)
-                                .unwrap();
-                            pass.set_bind_group(0, &bind_group.0, &[]);
-                            pass.set_pipeline(update_pipeline);
-                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
-                        }
-                        {
-                            let mut pass = render_context
-                                .command_encoder()
-                                .begin_compute_pass(&ComputePassDescriptor::default());
-                            let update_pipeline = pipeline_cache
-                                .get_compute_pipeline(pipeline.horizontalFFT_pipeline)
-                                .unwrap();
-                            pass.set_bind_group(0, &bind_group.0, &[]);
-                            pass.set_pipeline(update_pipeline);
-                            pass.dispatch_workgroups(1, 256, 1);
-                        }
+    let spectrums = buffers.add(ShaderStorageBuffer::from(spectrum_array));
 
-                        {
-                            let mut pass = render_context
-                                .command_encoder()
-                                .begin_compute_pass(&ComputePassDescriptor::default());
-                            let update_pipeline = pipeline_cache
-                                .get_compute_pipeline(pipeline.verticalFFT_pipeline)
-                                .unwrap();
-                            pass.set_bind_group(0, &bind_group.0, &[]);
-                            pass.set_pipeline(update_pipeline);
-                            pass.dispatch_workgroups(1, 256, 1);
-                        }
+    let water_resource = WaterResource {
+        _N: 256,
+        _seed: 1,
+        _LengthScale0: 15.0,
+        _LengthScale1: 10.0,
+        _LengthScale2: 8.0,
+        _LowCutoff: 0.0001,
+        _HighCutoff: 1000.0,
+        _Gravity: 9.8,
+        _RepeatTime: 20.0,
+        _FrameTime: 0.0,
+        _Lambda: Vec2 { x: 0.5, y: 0.5 },
+        _Spectrums: spectrums,
+        _SpectrumTextures: image1.clone(),
+        _InitialSpectrumTextures: image0.clone(),
+        _DisplacementTextures: image2.clone(),
+        _SlopeTextures: image3.clone(),
+        _Depth: 10000.0,
+        _FourierTarget: image1.clone(),
+        _FoamBias: 1.0,
+        _FoamDecayRate: 0.2,
+        _FoamAdd: 10.0,
+        _FoamThreshold: 0.0,
+    };
 
-                        {
-                            let mut pass = render_context
-                                .command_encoder()
-                                .begin_compute_pass(&ComputePassDescriptor::default());
-                            let update_pipeline = pipeline_cache
-                                .get_compute_pipeline(pipeline.assembleMaps_pipeline)
-                                .unwrap();
-                            pass.set_bind_group(0, &bind_group.0, &[]);
-                            pass.set_pipeline(update_pipeline);
-                            pass.dispatch_workgroups(256 / WORKGROUP_SIZE, 256 / WORKGROUP_SIZE, 1);
+    commands.insert_resource(water_resource);
+    let mat = custom_materials.add(CustomMaterial {
+        color: LinearRgba::new(0.0, 0.2, 1.0, 1.0),
+        skybox_texture: skybox_handle.clone(),
+        displacement: image2.clone(),
+        slope: image3.clone(),
+        tile_1: 202.0,
+        tile_2: 60.0,
+        tile_3: 12.0,
+        foam_1: 0.9,
+        foam_2: 1.0,
+        foam_3: 0.4,
+        alpha_mode: AlphaMode::Opaque,
+    });
+
+    let plane: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(100.0, 100.0)
+            .subdivisions(1000),
+    ));
+
+    let plane2: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(100.0, 100.0)
+            .subdivisions(500),
+    ));
+
+    let plane3: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(300.0, 300.0)
+            .subdivisions(100),
+    ));
+
+    for i in -5..6 {
+        for j in -5..6 {
+            if i == 0 && j == 0 {
+                for k in -1..2 {
+                    for l in -1..2 {
+                        if k == 0 && l == 0 {
+                            commands.spawn((
+                                Mesh3d(plane.clone()),
+                                MeshMaterial3d(mat.clone()),
+                                Transform::from_xyz(i as f32 * 100.0, 0.0, j as f32 * 100.0),
+                                NotShadowCaster,
+                            ));
+                        } else {
+                            commands.spawn((
+                                Mesh3d(plane2.clone()),
+                                MeshMaterial3d(mat.clone()),
+                                Transform::from_xyz(k as f32 * 100.0, 0.0, l as f32 * 100.0),
+                                NotShadowCaster,
+                            ));
                         }
                     }
                 }
-            } // First pass ends here
+            } else {
+                commands.spawn((
+                    Mesh3d(plane3.clone()),
+                    MeshMaterial3d(mat.clone()),
+                    Transform::from_xyz(i as f32 * 300.0, 0.0, j as f32 * 300.0),
+                    NotShadowCaster,
+                ));
+            }
         }
-
-        Ok(())
     }
+
+    let (tx, rx): (Sender<Image>, Receiver<Image>) = crossbeam_channel::bounded(300000);
+
+    commands.spawn(Readback::texture(image2.clone())).observe(
+        move |trigger: Trigger<ReadbackComplete>| {
+            // You probably want to interpret the data as a color rather than a `ShaderType`,
+            // but in this case we know the data is a single channel storage texture, so we can
+            // interpret it as a `Vec<u32>`
+            // let data: Vec<f32> = trigger.event().to_shader_type();
+            let row_bytes = 256 * 4 * 4;
+            let aligned_row_bytes = align_byte_size(row_bytes as u32) as usize;
+
+            let image_data = &trigger.event().0;
+            let image_data = image_data
+                .chunks(aligned_row_bytes)
+                .take(256usize * 4)
+                .flat_map(|row| &row[..row_bytes.min(row.len())])
+                .cloned()
+                .collect();
+            let mut image = Image::new(
+                Extent3d {
+                    width: 256,
+                    height: 256,
+                    ..default()
+                },
+                TextureDimension::D2,
+                image_data,
+                TextureFormat::Rgba32Float,
+                RenderAssetUsages::default(),
+            );
+
+            // info!("Image {:?}", image.get_color_at(0, 0));
+            // displament_image.displacement = Some(image.clone());
+            tx.send(image.clone()).unwrap();
+        },
+    );
+    commands.spawn(DisplacementReceiver { receiver: rx });
+}
+
+fn receive_displacement_texture(
+    mut commands: Commands,
+    displacement_receiver_query: Query<&DisplacementReceiver>,
+    mut displacement_image_query: Query<&mut DisplacementImage>,
+) {
+    if let Ok(receiver) = displacement_receiver_query.get_single() {
+        let result = receiver.receiver.try_recv();
+        if let Ok(result) = result {
+            if let Ok(mut d) = displacement_image_query.get_single_mut() {
+                d.displacement = result.clone();
+            } else {
+                commands.spawn(DisplacementImage {
+                    displacement: result.clone(),
+                });
+            }
+            // commands.spawn(DisplacementImage {
+            //     displacement: result.clone(),
+            // });
+            // let image = result.convert(TextureFormat::Rgba8UnormSrgb).unwrap();
+            // let img = image.try_into_dynamic().unwrap();
+            //
+            // img.save("tmp.png").unwrap();
+        }
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct CustomMaterial {
+    #[uniform(0)]
+    color: LinearRgba,
+    #[sampler(1)]
+    #[texture(2, dimension = "cube")]
+    skybox_texture: Handle<Image>,
+
+    #[texture(3, dimension = "2d_array")]
+    displacement: Handle<Image>,
+
+    #[texture(4, dimension = "2d_array")]
+    slope: Handle<Image>,
+    #[uniform(5)]
+    tile_1: f32,
+    #[uniform(6)]
+    tile_2: f32,
+    #[uniform(7)]
+    tile_3: f32,
+    #[uniform(8)]
+    foam_1: f32,
+    #[uniform(9)]
+    foam_2: f32,
+    #[uniform(10)]
+    foam_3: f32,
+
+    alpha_mode: AlphaMode,
+}
+
+impl Material for CustomMaterial {
+    fn vertex_shader() -> ShaderRef {
+        SHADER_ASSET_PATH.into()
+    }
+    fn fragment_shader() -> ShaderRef {
+        SHADER_ASSET_PATH.into()
+    }
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
+    }
+}
+
+pub(crate) fn align_byte_size(value: u32) -> u32 {
+    value + (wgpu::COPY_BYTES_PER_ROW_ALIGNMENT - (value % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT))
+}
+
+pub fn get_displacement(n: i32, scale: f32, image: &Image, pos: Vec2) -> Vec3 {
+    let scaled = pos / scale * n as f32;
+    let x1y1 = Vec2::new(scaled.x.floor(), scaled.y.floor());
+    let x2y1 = Vec2::new(scaled.x.ceil(), scaled.y.floor());
+    let x1y2 = Vec2::new(scaled.x.floor(), scaled.y.ceil());
+    let x2y2 = Vec2::new(scaled.x.ceil(), scaled.y.ceil());
+    let x_percent = scaled.x - x1y1.x;
+    let y_percent = scaled.y - x1y1.y;
+    let displacement_x1_y1 = get_displacement_at_coord(scale, image, get_coords(n, x1y1));
+    let displacement_x2_y1 = get_displacement_at_coord(scale, image, get_coords(n, x2y1));
+    let displacement_x1_y2 = get_displacement_at_coord(scale, image, get_coords(n, x1y2));
+    let displacement_x2_y2 = get_displacement_at_coord(scale, image, get_coords(n, x2y2));
+    return x_percent * y_percent * displacement_x2_y2
+        + (1.0 - x_percent) * y_percent * displacement_x1_y2
+        + x_percent * (1.0 - y_percent) * displacement_x2_y1
+        + (1.0 - x_percent) * (1.0 - y_percent) * displacement_x1_y1;
+}
+
+fn get_displacement_at_coord(scale: f32, image: &Image, pos: UVec2) -> Vec3 {
+    let col = image.get_color_at(pos.x, pos.y).unwrap().to_linear();
+    return Vec3::new(col.red * scale, col.green * scale, col.blue * scale);
+}
+
+// fn get_coords(n: i32, pos: Vec2) -> UVec2 {
+//     UVec2::new(modulo((pos.x) as i32, n), modulo((pos.y) as i32, n))
+// }
+fn get_coords(n: i32, pos: Vec2) -> UVec2 {
+    UVec2::new(
+        (pos.x as i32 & (n - 1)) as u32,
+        (pos.y as i32 & (n - 1)) as u32,
+    )
+}
+
+pub fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> Vec2 {
+    let mut adjustedPos: Vec2 = Vec2::from(pos);
+    let mut factor = 1.0;
+    for i in 0..3 {
+        // let coords = get_coords(256, 202.0, adjustedPos, image);
+        let displacement = get_displacement(n, 202.0, image, adjustedPos);
+        let newPoint = Vec2::new(
+            adjustedPos.x + displacement.x,
+            adjustedPos.y + displacement.z,
+        );
+        // if (pos - newPoint).length_squared() < 0.01 {
+        //     return adjustedPos;
+        // }
+        adjustedPos.x += (pos.x - newPoint.x) * factor;
+        adjustedPos.y += (pos.y - newPoint.y) * factor;
+        factor *= 0.95
+    }
+    // return get_coords(n, scale, adjustedPos, image);
+    return adjustedPos;
+}
+
+fn update_time(
+    time: Res<Time>,
+    mut water_resource: ResMut<WaterResource>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    // if let Some(position) = q_windows.single().cursor_position() {
+    //     println!("Cursor is inside the primary window, at {:?}", position);
+    //     water_resource._FrameTime = position.x * 0.02;
+    // } else {
+    //     println!("Cursor is not in the game window.");
+    // }
+    water_resource._FrameTime += time.delta_secs() * 0.2;
 }
