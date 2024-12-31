@@ -347,6 +347,8 @@ fn Permute(data: vec4<f32>, id: vec3<f32>) -> vec4<f32> {
 
 @compute @workgroup_size(8, 8, 1)
 fn assembleMaps(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
+
+    let lengthScales = array<f32, 3>(f32(_LengthScale0), f32(_LengthScale1), f32(_LengthScale2));
     for (var i: u32 = 0u; i < 3u; i++) {
         let spec1 = textureLoad(
             _SpectrumTextures,
@@ -366,7 +368,8 @@ fn assembleMaps(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builti
 
         let displacement = vec3(_Lambda.x * dxdz.x, dydxz.x, _Lambda.y * dxdz.y);
 
-        let slopes = dyxdyz.xy / (1.0 + abs(dxxdzz * _Lambda));
+        let slopes = lengthScales[i] * dyxdyz.xy / (1.0 + abs(dxxdzz * _Lambda));
+
 
         var foam = textureLoad(_DisplacementTextures, invocation_id.xy, i).a;
 

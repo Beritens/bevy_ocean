@@ -1,15 +1,13 @@
+use avian3d::prelude::RigidBody;
 use crate::water_compute::{SpectrumParameters, WaterResource};
 use bevy::app::{App, Plugin, PreUpdate, Startup, Update};
 use bevy::asset::{Asset, Handle, RenderAssetUsages};
 use bevy::color::LinearRgba;
 use bevy::image::Image;
 use bevy::math::{UVec2, Vec3};
+use bevy::math::ops::tan;
 use bevy::pbr::{Material, MaterialPlugin, NotShadowCaster};
-use bevy::prelude::{
-    default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d,
-    MeshMaterial3d, Meshable, Plane3d, Query, Res, ResMut, StandardMaterial, Time, Transform,
-    Trigger, TypePath, Vec2, Window, With,
-};
+use bevy::prelude::{default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d, MeshMaterial3d, Meshable, Mut, Plane3d, Query, Res, ResMut, StandardMaterial, Time, Transform, Trigger, TypePath, Vec2, Window, With, Without};
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::gpu_readback::{Readback, ReadbackComplete};
 use bevy::render::render_graph::RenderGraph;
@@ -20,6 +18,7 @@ use bevy::render::storage::ShaderStorageBuffer;
 use bevy::render::{Render, RenderApp, RenderSet};
 use bevy::window::PrimaryWindow;
 use crossbeam_channel::{Receiver, Sender};
+use crate::Buoyant;
 
 pub struct WaterPlugin;
 
@@ -27,12 +26,22 @@ const SHADER_ASSET_PATH: &str = "shaders/custom_material.wgsl";
 
 #[derive(Component)]
 struct DisplacementReceiver {
-    receiver: Receiver<Image>,
+    receiver: Receiver<Vec<Vec<Vec3>>>,
+}
+
+#[derive(Component)]
+struct SlopeReceiver {
+    receiver: Receiver<Vec<Vec<Vec2>>>,
 }
 
 #[derive(Component)]
 pub struct DisplacementImage {
-    pub displacement: Image,
+    pub displacement: Vec<Vec<Vec3>>,
+}
+
+#[derive(Component)]
+pub struct SlopeImage {
+    pub slope: Vec<Vec<Vec2>>,
 }
 
 impl Plugin for crate::water::WaterPlugin {
@@ -41,7 +50,7 @@ impl Plugin for crate::water::WaterPlugin {
 
         app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
         app.add_systems(Startup, water_setup);
-        app.add_systems(PreUpdate, receive_displacement_texture);
+        app.add_systems(PreUpdate, (receive_displacement_texture,receive_slope_texture));
         app.add_systems(Update, update_time);
     }
 }
@@ -124,7 +133,7 @@ fn water_setup(
     );
 
     slope_texture.texture_descriptor.usage =
-        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
+        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_SRC;
 
     let image0 = images.add(initial_spectrum_texture);
     let image1 = images.add(spectrum_texture);
@@ -132,7 +141,7 @@ fn water_setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 0.001,
+        scale: 0.0001,
         angle: 3.14,
         spreadBlend: 0.0,
         swell: 1.0,
@@ -143,7 +152,7 @@ fn water_setup(
     };
 
     let spectrum1: SpectrumParameters = SpectrumParameters {
-        scale: 0.00,
+        scale: 0.001,
         angle: 3.14,
         spreadBlend: 0.9,
         swell: 1.0,
@@ -154,7 +163,7 @@ fn water_setup(
     };
 
     let spectrum2: SpectrumParameters = SpectrumParameters {
-        scale: 0.000,
+        scale: 0.001,
         angle: 1.6,
         spreadBlend: 0.8,
         swell: 0.00,
@@ -178,7 +187,7 @@ fn water_setup(
     let water_resource = WaterResource {
         _N: 256,
         _seed: 1,
-        _LengthScale0: 15.0,
+        _LengthScale0: 17.0,
         _LengthScale1: 10.0,
         _LengthScale2: 8.0,
         _LowCutoff: 0.0001,
@@ -186,7 +195,7 @@ fn water_setup(
         _Gravity: 9.8,
         _RepeatTime: 20.0,
         _FrameTime: 0.0,
-        _Lambda: Vec2 { x: 0.5, y: 0.5 },
+        _Lambda: Vec2 { x: 1.5, y: 1.5 },
         _Spectrums: spectrums,
         _SpectrumTextures: image1.clone(),
         _InitialSpectrumTextures: image0.clone(),
@@ -196,17 +205,19 @@ fn water_setup(
         _FourierTarget: image1.clone(),
         _FoamBias: 1.0,
         _FoamDecayRate: 0.2,
-        _FoamAdd: 10.0,
+        _FoamAdd: 0.0,
         _FoamThreshold: 0.0,
     };
 
     commands.insert_resource(water_resource);
     let mat = custom_materials.add(CustomMaterial {
-        color: LinearRgba::new(0.0, 0.2, 1.0, 1.0),
+        scatter_color: LinearRgba::new(0.1, 0.55, 0.5, 1.0),
+        sun_color: LinearRgba::new(1.0, 0.5, 0.3, 1.0),
+        ambient_color: LinearRgba::new(0.0, 0.01, 0.1, 1.0),
         skybox_texture: skybox_handle.clone(),
         displacement: image2.clone(),
         slope: image3.clone(),
-        tile_1: 202.0,
+        tile_1: 102.0,
         tile_2: 60.0,
         tile_3: 12.0,
         foam_1: 0.9,
@@ -269,74 +280,151 @@ fn water_setup(
         }
     }
 
-    let (tx, rx): (Sender<Image>, Receiver<Image>) = crossbeam_channel::bounded(300000);
+    let (tx, rx): (Sender<Vec<Vec<Vec3>>>, Receiver<Vec<Vec<Vec3>>>) =
+        crossbeam_channel::bounded(300000);
 
     commands.spawn(Readback::texture(image2.clone())).observe(
         move |trigger: Trigger<ReadbackComplete>| {
-            // You probably want to interpret the data as a color rather than a `ShaderType`,
-            // but in this case we know the data is a single channel storage texture, so we can
-            // interpret it as a `Vec<u32>`
-            // let data: Vec<f32> = trigger.event().to_shader_type();
-            let row_bytes = 256 * 4 * 4;
-            let aligned_row_bytes = align_byte_size(row_bytes as u32) as usize;
 
-            let image_data = &trigger.event().0;
-            let image_data = image_data
-                .chunks(aligned_row_bytes)
-                .take(256usize * 4)
-                .flat_map(|row| &row[..row_bytes.min(row.len())])
-                .cloned()
-                .collect();
-            let mut image = Image::new(
-                Extent3d {
-                    width: 256,
-                    height: 256,
-                    ..default()
-                },
-                TextureDimension::D2,
-                image_data,
-                TextureFormat::Rgba32Float,
-                RenderAssetUsages::default(),
-            );
+            let image_data: &Vec<u8> = &trigger.event().0;
+            let displacement_map = convert_readback_data(image_data);
 
-            // info!("Image {:?}", image.get_color_at(0, 0));
-            // displament_image.displacement = Some(image.clone());
-            tx.send(image.clone()).unwrap();
+            if(displacement_map[0][0].is_finite()){
+                tx.send(displacement_map).unwrap();
+            }
+
+        },
+    );
+
+    let (tx2, rx2): (Sender<Vec<Vec<Vec2>>>, Receiver<Vec<Vec<Vec2>>>) =
+        crossbeam_channel::bounded(300000);
+    commands.spawn(Readback::texture(image3.clone())).observe(
+        move |trigger: Trigger<ReadbackComplete>| {
+
+            let image_data: &Vec<u8> = &trigger.event().0;
+            let slope_map = convert_readback_data_vec2(image_data);
+
+            if(slope_map[0][0].is_finite()){
+                tx2.send(slope_map).unwrap();
+            }
+
         },
     );
     commands.spawn(DisplacementReceiver { receiver: rx });
+    commands.spawn(SlopeReceiver { receiver: rx2 });
 }
+
+fn convert_readback_data(data: &[u8]) -> Vec<Vec<Vec3>> {
+    let row_bytes = 256 * 4 * 4;
+    let aligned_row_bytes = align_byte_size(row_bytes as u32) as usize;
+
+    let mut displacement_map: Vec<Vec<Vec3>> = Vec::with_capacity(256);
+
+    for y in 0..256 {
+        let row_start = y * aligned_row_bytes;
+        let row_end = row_start + row_bytes.min(data.len().saturating_sub(row_start));
+
+        if row_start >= data.len() {
+            break; // Avoid out-of-bounds access
+        }
+
+        let row_data = &data[row_start..row_end];
+        let row: Vec<Vec3> = row_data
+            .chunks(16) // 16 bytes per pixel (RGBA32 float)
+            .map(|pixel| {
+                let r = f32::from_ne_bytes(pixel[0..4].try_into().unwrap());
+                let g = f32::from_ne_bytes(pixel[4..8].try_into().unwrap());
+                let b = f32::from_ne_bytes(pixel[8..12].try_into().unwrap());
+                Vec3::new(r, g, b) // Convert to Vec3
+            })
+            .collect();
+
+        displacement_map.push(row);
+    }
+
+    displacement_map
+}
+
+fn convert_readback_data_vec2(data: &[u8]) -> Vec<Vec<Vec2>> {
+    let row_bytes = 256 * 4 * 2;
+    let aligned_row_bytes = align_byte_size(row_bytes as u32) as usize;
+
+    let mut displacement_map: Vec<Vec<Vec2>> = Vec::with_capacity(256);
+
+    for y in 0..256 {
+        let row_start = y * aligned_row_bytes;
+        let row_end = row_start + row_bytes.min(data.len().saturating_sub(row_start));
+
+        if row_start >= data.len() {
+            break; // Avoid out-of-bounds access
+        }
+
+        let row_data = &data[row_start..row_end];
+        let row: Vec<Vec2> = row_data
+            .chunks(8) // 16 bytes per pixel (RGBA32 float)
+            .map(|pixel| {
+                let r = f32::from_ne_bytes(pixel[0..4].try_into().unwrap());
+                let g = f32::from_ne_bytes(pixel[4..8].try_into().unwrap());
+                // let b = f32::from_ne_bytes(pixel[8..12].try_into().unwrap());
+                Vec2::new(r, g) // Convert to Vec3
+            })
+            .collect();
+
+        displacement_map.push(row);
+    }
+
+    displacement_map
+}
+
 
 fn receive_displacement_texture(
     mut commands: Commands,
-    displacement_receiver_query: Query<&DisplacementReceiver>,
+    receiver_query: Query<&DisplacementReceiver>,
     mut displacement_image_query: Query<&mut DisplacementImage>,
 ) {
-    if let Ok(receiver) = displacement_receiver_query.get_single() {
+
+    if let Ok(receiver) = receiver_query.get_single() {
         let result = receiver.receiver.try_recv();
         if let Ok(result) = result {
-            if let Ok(mut d) = displacement_image_query.get_single_mut() {
-                d.displacement = result.clone();
-            } else {
-                commands.spawn(DisplacementImage {
-                    displacement: result.clone(),
-                });
+            if let Ok(mut displacement_image) = displacement_image_query.get_single_mut() {
+                displacement_image.displacement = result.clone();
             }
-            // commands.spawn(DisplacementImage {
-            //     displacement: result.clone(),
-            // });
-            // let image = result.convert(TextureFormat::Rgba8UnormSrgb).unwrap();
-            // let img = image.try_into_dynamic().unwrap();
-            //
-            // img.save("tmp.png").unwrap();
+            else{
+                commands.spawn(DisplacementImage { displacement: result.clone() });
+            }
         }
     }
+
+}
+
+fn receive_slope_texture(
+    mut commands: Commands,
+    receiver_query: Query<&SlopeReceiver>,
+    mut slope_image_query: Query<&mut SlopeImage>,
+) {
+
+    if let Ok(receiver) = receiver_query.get_single() {
+        let result = receiver.receiver.try_recv();
+        if let Ok(result) = result {
+            if let Ok(mut slope_image) = slope_image_query.get_single_mut() {
+                slope_image.slope = result.clone();
+            }
+            else{
+                commands.spawn(SlopeImage { slope: result.clone() });
+            }
+        }
+    }
+
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 struct CustomMaterial {
     #[uniform(0)]
-    color: LinearRgba,
+    scatter_color: LinearRgba,
+    #[uniform(11)]
+    sun_color: LinearRgba,
+    #[uniform(12)]
+    ambient_color: LinearRgba,
     #[sampler(1)]
     #[texture(2, dimension = "cube")]
     skybox_texture: Handle<Image>,
@@ -378,7 +466,7 @@ pub(crate) fn align_byte_size(value: u32) -> u32 {
     value + (wgpu::COPY_BYTES_PER_ROW_ALIGNMENT - (value % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT))
 }
 
-pub fn get_displacement(n: i32, scale: f32, image: &Image, pos: Vec2) -> Vec3 {
+pub fn get_displacement(n: i32, scale: f32, image: &Vec<Vec<Vec3>>, pos: Vec2) -> Vec3 {
     let scaled = pos / scale * n as f32;
     let x1y1 = Vec2::new(scaled.x.floor(), scaled.y.floor());
     let x2y1 = Vec2::new(scaled.x.ceil(), scaled.y.floor());
@@ -396,9 +484,38 @@ pub fn get_displacement(n: i32, scale: f32, image: &Image, pos: Vec2) -> Vec3 {
         + (1.0 - x_percent) * (1.0 - y_percent) * displacement_x1_y1;
 }
 
-fn get_displacement_at_coord(scale: f32, image: &Image, pos: UVec2) -> Vec3 {
-    let col = image.get_color_at(pos.x, pos.y).unwrap().to_linear();
-    return Vec3::new(col.red * scale, col.green * scale, col.blue * scale);
+pub fn get_normal(n: i32, scale: f32, image: &Vec<Vec<Vec2>>, pos: Vec2) -> Vec3 {
+    let slope = get_slope(n, scale, image, pos);
+    // let tangent = Vec3::new(1.0, slope.x, 0.0);
+    // let binormal = Vec3::new(0.0, slope.y, 1.0);
+    // return Vec3::cross(tangent, binormal);
+    return Vec3::new(-slope.x, 1.0, -slope.y);
+}
+
+pub fn get_slope(n: i32, scale: f32, image: &Vec<Vec<Vec2>>, pos: Vec2) -> Vec2 {
+    let scaled = pos / scale * n as f32;
+    let x1y1 = Vec2::new(scaled.x.floor(), scaled.y.floor());
+    let x2y1 = Vec2::new(scaled.x.ceil(), scaled.y.floor());
+    let x1y2 = Vec2::new(scaled.x.floor(), scaled.y.ceil());
+    let x2y2 = Vec2::new(scaled.x.ceil(), scaled.y.ceil());
+    let x_percent = scaled.x - x1y1.x;
+    let y_percent = scaled.y - x1y1.y;
+    let displacement_x1_y1 = get_slope_at_coord(scale, image, get_coords(n, x1y1));
+    let displacement_x2_y1 = get_slope_at_coord(scale, image, get_coords(n, x2y1));
+    let displacement_x1_y2 = get_slope_at_coord(scale, image, get_coords(n, x1y2));
+    let displacement_x2_y2 = get_slope_at_coord(scale, image, get_coords(n, x2y2));
+    return x_percent * y_percent * displacement_x2_y2
+        + (1.0 - x_percent) * y_percent * displacement_x1_y2
+        + x_percent * (1.0 - y_percent) * displacement_x2_y1
+        + (1.0 - x_percent) * (1.0 - y_percent) * displacement_x1_y1;
+}
+
+fn get_displacement_at_coord(scale: f32, image: &Vec<Vec<Vec3>>, pos: UVec2) -> Vec3 {
+    return scale * image[pos.y as usize][pos.x as usize];
+}
+
+fn get_slope_at_coord(scale: f32, image: &Vec<Vec<Vec2>>, pos: UVec2) -> Vec2 {
+    return image[pos.y as usize][pos.x as usize];
 }
 
 // fn get_coords(n: i32, pos: Vec2) -> UVec2 {
@@ -411,12 +528,12 @@ fn get_coords(n: i32, pos: Vec2) -> UVec2 {
     )
 }
 
-pub fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Image) -> Vec2 {
+pub fn get_adjusted_coords(n: i32, scale: f32, pos: Vec2, image: &Vec<Vec<Vec3>>) -> Vec2 {
     let mut adjustedPos: Vec2 = Vec2::from(pos);
     let mut factor = 1.0;
     for i in 0..3 {
         // let coords = get_coords(256, 202.0, adjustedPos, image);
-        let displacement = get_displacement(n, 202.0, image, adjustedPos);
+        let displacement = get_displacement(n, scale, image, adjustedPos);
         let newPoint = Vec2::new(
             adjustedPos.x + displacement.x,
             adjustedPos.y + displacement.z,

@@ -7,11 +7,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1e8aeb3d-9b44-4181-ba9e-edebcf5d5b9c" name="Changes" comment="parallel swim">
-      <change afterPath="$PROJECT_DIR$/src/water_compute.rs" afterDir="false" />
+    <list default="true" id="5d6731bc-33d5-4ad2-8319-1ee6dea2c5e5" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/shaders/fft_water.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/fft_water.wgsl" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/water.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/water.rs" afterDir="false" />
     </list>
@@ -20,20 +19,9 @@
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:dev" />
-  <component name="FileTemplateManagerImpl">
-    <option name="RECENT_TEMPLATES">
-      <list>
-        <option value="Rust File" />
-      </list>
-    </option>
-  </component>
-  <component name="FormatOnSaveOptions">
-    <option name="myRunOnSave" value="true" />
-  </component>
+  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:release" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
-    <option name="ROOT_SYNC" value="DONT_SYNC" />
   </component>
   <component name="GitHubPullRequestSearchHistory">{
   &quot;lastFilter&quot;: {
@@ -48,65 +36,39 @@
   }
 }</component>
   <component name="MacroExpansionManager">
-    <option name="directoryName" value="NqouxfJV" />
+    <option name="directoryName" value="1nDFXOXX" />
   </component>
   <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
   &quot;associatedIndex&quot;: 4
 }</component>
-  <component name="ProjectId" id="2qSFhP1IAJ6L8MOXNQthxWi4imy" />
+  <component name="ProjectId" id="2qwyQzygGIF2CIXuaAviaKKWdD5" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Cargo.Run bevy_ocean.executor": "Run",
-    "Cargo.Run ocean.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.rust.reset.selective.auto.import": "true",
-    "git-widget-placeholder": "main",
-    "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "D:/DEV/bevy_ocean/assets/shaders",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
-    "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
-    "org.rust.first.attach.projects": "true",
-    "settings.editor.selected.configurable": "actions.on.save",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Cargo.Run bevy_ocean.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
+    &quot;org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon&quot;: &quot;&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
-  <component name="RecentsManager">
-    <key name="CopyFile.RECENT_KEYS">
-      <recent name="D:\DEV\bevy_ocean\assets\shaders" />
-    </key>
-  </component>
+}</component>
   <component name="RunManager">
     <configuration name="Run bevy_ocean" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="buildProfileId" value="dev" />
+      <option name="buildProfileId" value="release" />
       <option name="command" value="run --package bevy_ocean --bin bevy_ocean" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <envs />
-      <option name="emulateTerminal" value="true" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration default="true" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-      <option name="command" value="run" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$/ocean" />
       <envs />
       <option name="emulateTerminal" value="true" />
       <option name="channel" value="DEFAULT" />
@@ -133,117 +95,17 @@
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="1e8aeb3d-9b44-4181-ba9e-edebcf5d5b9c" name="Changes" comment="" />
-      <created>1734648188018</created>
+      <changelist id="5d6731bc-33d5-4ad2-8319-1ee6dea2c5e5" name="Changes" comment="" />
+      <created>1735587920368</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1734648188018</updated>
-      <workItem from="1734648189274" duration="657000" />
-      <workItem from="1734648904303" duration="1272000" />
-      <workItem from="1734728030872" duration="1370000" />
-      <workItem from="1734890042339" duration="5185000" />
-      <workItem from="1735039758354" duration="19823000" />
-      <workItem from="1735088263146" duration="2789000" />
-      <workItem from="1735133994652" duration="30962000" />
-      <workItem from="1735205607576" duration="3000" />
-      <workItem from="1735205628230" duration="40215000" />
-      <workItem from="1735321352910" duration="6582000" />
-      <workItem from="1735328034716" duration="10148000" />
-      <workItem from="1735388190185" duration="2108000" />
-      <workItem from="1735400337218" duration="6567000" />
-      <workItem from="1735464230993" duration="7135000" />
-      <workItem from="1735490504848" duration="16214000" />
+      <updated>1735587920368</updated>
+      <workItem from="1735587921246" duration="16770000" />
+      <workItem from="1735652441909" duration="11768000" />
     </task>
-    <task id="LOCAL-00001" summary="simple gerstner waves with cook torrance shader">
-      <option name="closed" value="true" />
-      <created>1734650419528</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1734650419528</updated>
-    </task>
-    <task id="LOCAL-00002" summary="feeding compute shader texture into custom shader">
-      <option name="closed" value="true" />
-      <created>1735090485895</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1735090485895</updated>
-    </task>
-    <task id="LOCAL-00003" summary="fft">
-      <option name="closed" value="true" />
-      <created>1735184806137</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1735184806137</updated>
-    </task>
-    <task id="LOCAL-00004" summary="fixed fft">
-      <option name="closed" value="true" />
-      <created>1735249336858</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1735249336858</updated>
-    </task>
-    <task id="LOCAL-00005" summary="gpu readback">
-      <option name="closed" value="true" />
-      <created>1735348442235</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1735348442235</updated>
-    </task>
-    <task id="LOCAL-00006" summary="linear filtering on cpu">
-      <option name="closed" value="true" />
-      <created>1735416325681</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1735416325681</updated>
-    </task>
-    <task id="LOCAL-00007" summary="parallel swim">
-      <option name="closed" value="true" />
-      <created>1735469819119</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1735469819119</updated>
-    </task>
-    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
-  </component>
-  <component name="VcsManagerConfiguration">
-    <MESSAGE value="simple gerstner waves with cook torrance shader" />
-    <MESSAGE value="feeding compute shader texture into custom shader" />
-    <MESSAGE value="fft" />
-    <MESSAGE value="fixed fft" />
-    <MESSAGE value="gpu readback" />
-    <MESSAGE value="linear filtering on cpu" />
-    <MESSAGE value="parallel swim" />
-    <option name="LAST_COMMIT_MESSAGE" value="parallel swim" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/main.rs</url>
-          <line>205</line>
-          <option name="timeStamp" value="5" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
-    <watches-manager>
-      <configuration name="CargoCommandRunConfiguration">
-        <watch expression="global_point" />
-      </configuration>
-    </watches-manager>
-  </component>
-  <component name="XSLT-Support.FileAssociations.UIState">
-    <expand />
-    <select />
   </component>
 </project>

@@ -6,14 +6,16 @@
 const PI = 3.141592;
 const roughness = 0.05;
 const F0 = 1.0;
-const ambient = vec3(0.02, 0.06, 0.08);
+//const ambient = vec3(0.02, 0.06, 0.08);
 //const ambient = vec3(0.0, 0.0, 0.0);
 const specular_color = vec3(0.1, 0.1, 0.1);
-const light_color = vec3(1.0, 0.8, 0.2);
+//const light_color = vec3(1.0, 0.8, 0.2);
 //const light_color = vec3(0.0, 0.00, 0.0);
 const light_dir = vec3(0.3, 1.0, -5.0);
 
-@group(2) @binding(0) var<uniform> material_color: vec4<f32>;
+@group(2) @binding(0) var<uniform> scatter_color: vec4<f32>;
+@group(2) @binding(11) var<uniform> sun_color: vec4<f32>;
+@group(2) @binding(12) var<uniform> ambient_color: vec4<f32>;
 @group(2) @binding(1) var textureSampler: sampler;
 @group(2) @binding(2) var skybox: texture_cube<f32>;
 @group(2) @binding(3) var displacement_texture: texture_2d_array<f32>;
@@ -71,6 +73,9 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     var pos = vertex.position +  textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_1, 0, 0.0).xyz * tile_1;
     pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_2, 1, 0.0).xyz * tile_2;
     pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_3, 2, 0.0).xyz * tile_3;
+//    var pos = vertex.position +  textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_1, 0, 0.0).xyz;
+//    pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_2, 1, 0.0).xyz;
+//    pos += textureSampleLevel(displacement_texture, textureSampler, w_pos.xz / tile_3, 2, 0.0).xyz;
 //    for (var i = 0; i < 0; i++) {
 //
 //        let info = GerstWave(waves[i], vertex.position);
@@ -88,7 +93,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 }
 
 
-fn CookTorrance(materialDiffuseColor: vec3<f32>, materialSpecularColor: vec3<f32>, normal: vec3<f32>, lightDir: vec3<f32>, viewDir: vec3<f32>, lightColor: vec3<f32>) -> vec3<f32> {
+fn CookTorrance(materialSpecularColor: vec3<f32>, normal: vec3<f32>, lightDir: vec3<f32>, viewDir: vec3<f32>, lightColor: vec3<f32>) -> vec3<f32> {
     let NdotL: f32 = max(0., dot(normal, lightDir));
     var Rs: f32 = 0.;
     if (NdotL > 0) {
@@ -112,7 +117,12 @@ fn CookTorrance(materialDiffuseColor: vec3<f32>, materialSpecularColor: vec3<f32
         let G: f32 = min(1., min(g1, g2));
         Rs = max(F * D * G / (PI * NdotL * NdotV),0.0);
     }
-    return materialDiffuseColor * lightColor * NdotL + lightColor * materialSpecularColor * Rs;
+    return  lightColor * materialSpecularColor * Rs;
+}
+
+fn dot_clamped(a: vec3<f32>, b: vec3<f32>) -> f32{
+    return max(0.0, dot(a,b));
+
 }
 
 
@@ -129,12 +139,13 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     var slope = textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_1, 0).xy;
     slope += textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_2, 1).xy;
     slope += textureSample(slope_texture, textureSampler, mesh.world_position.xz /tile_3, 2).xy;
-    slope *= 10.0;
+//    slope *= 17.0;
 
     let displacement1 =  textureSample(displacement_texture, textureSampler, mesh.world_position.xz / tile_1, 0) ;
     let displacement2 = textureSample(displacement_texture, textureSampler, mesh.world_position.xz  / tile_2, 1);
     let displacement3 = textureSample(displacement_texture, textureSampler, mesh.world_position.xz / tile_3, 2);
     let displacement = (displacement1* tile_1 + displacement2 * tile_2 + displacement3 * tile_3).xyz;
+//    let displacement = (displacement1 + displacement2 + displacement3).xyz;
 
 
     let p = mesh.world_position.xyz + displacement;
@@ -158,7 +169,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
 //    let normal: vec3<f32> = normalize(textureSample(slope, textureSampler, mesh.world_position.xy /256.0, 0).xy);
 
     let light = normalize(light_dir);
-    let brightness = max(dot(normal, light),0.0);
+    let brightness = dot_clamped(normal, light);
 
     let camera_position = vec3<f32>(view_bindings::view.world_from_view[3].xyz);
     let view_dir = normalize(p - camera_position);
@@ -176,6 +187,15 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
 
 //    return vec4(normal, 1.0);
 
+    let H = max(0.0, displacement.y);
+
+    let k1 = H * pow(dot_clamped(light, view_dir),4.0) * pow(0.5 - 0.5 * dot_clamped(light, normal), 3.0);
+    let k2 = pow(dot_clamped(-view_dir, normal), 2.0);
+    let k3 = brightness;
+
+    var scatter = (k1 + k2) * scatter_color * sun_color * (1.0/ (1.0 + 100.0));
+    scatter += k3 * scatter_color * sun_color + ambient_color * sun_color;
+
 
 //
     let foam_color = vec3(2.0, 2.0,2.0);
@@ -183,9 +203,13 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
 
 //    let water_color = material_color.xyz +  vec3(1.0,1.0,1.0) * displacement.w;
 //    let water_color = foam_color * displacement.w + material_color.xyz*(1.0 - displacement.w);
-    let water_color = mix(material_color.xyz, foam_color, clamp(foam_amount,0.0,1.0));
+    let water_color = mix(scatter_color.xyz, foam_color, clamp(foam_amount,0.0,1.0));
 
-    return vec4( 1.0 * F * reflected.xyz + (water_color) * ambient + brightness * CookTorrance(water_color, specular_color, normal, light, -view_dir, light_color), 1.0);
+
+
+//return vec4(k3);
+//    return vec4( 1.0 * F * reflected.xyz + (water_color) * ambient_color.xyz + brightness * CookTorrance(water_color, specular_color, normal, light, -view_dir, sun_color.xyz), 1.0);
+    return vec4(F * reflected.xyz + (1.0 - F) * scatter.xyz + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz), 1.0);
 //    return vec4(material_color.xyz * ambient + brightness * CookTorrance(material_color.xyz, specular_color, normal, light, -view_dir, light_color),1.0);
 //    return vec4(material_color.xyz * ambient + brightness * material_color.xyz,1.0);
 //       return vec4(brightness * material.color.xyz, 1.0);
