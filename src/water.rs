@@ -141,9 +141,9 @@ fn water_setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 0.0001,
-        angle: 3.14,
-        spreadBlend: 0.0,
+        scale: 0.001,
+        angle: 1.14,
+        spreadBlend: 0.8,
         swell: 1.0,
         alpha: 0.01,
         peakOmega: 0.0,
@@ -152,9 +152,9 @@ fn water_setup(
     };
 
     let spectrum1: SpectrumParameters = SpectrumParameters {
-        scale: 0.001,
-        angle: 3.14,
-        spreadBlend: 0.9,
+        scale: 0.01,
+        angle: 1.14,
+        spreadBlend: 1.0,
         swell: 1.0,
         alpha: 0.01,
         peakOmega: 2.0,
@@ -195,7 +195,7 @@ fn water_setup(
         _Gravity: 9.8,
         _RepeatTime: 20.0,
         _FrameTime: 0.0,
-        _Lambda: Vec2 { x: 1.5, y: 1.5 },
+        _Lambda: Vec2 { x: 0.8, y: 0.8 },
         _Spectrums: spectrums,
         _SpectrumTextures: image1.clone(),
         _InitialSpectrumTextures: image0.clone(),
@@ -204,16 +204,16 @@ fn water_setup(
         _Depth: 10000.0,
         _FourierTarget: image1.clone(),
         _FoamBias: 1.0,
-        _FoamDecayRate: 0.2,
-        _FoamAdd: 0.0,
+        _FoamDecayRate: 0.1,
+        _FoamAdd: 3.00,
         _FoamThreshold: 0.0,
     };
 
     commands.insert_resource(water_resource);
     let mat = custom_materials.add(CustomMaterial {
-        scatter_color: LinearRgba::new(0.1, 0.55, 0.5, 1.0),
-        sun_color: LinearRgba::new(1.0, 0.5, 0.3, 1.0),
-        ambient_color: LinearRgba::new(0.0, 0.01, 0.1, 1.0),
+        scatter_color: LinearRgba::new(0.0, 0.03, 0.15, 1.0),
+        sun_color: LinearRgba::new(0.7, 1.0, 1.0, 1.0),
+        ambient_color: LinearRgba::new(0.01, 0.01, 0.3, 1.0),
         skybox_texture: skybox_handle.clone(),
         displacement: image2.clone(),
         slope: image3.clone(),

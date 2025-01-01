@@ -4,7 +4,7 @@
 #import bevy_pbr::mesh_view_bindings as view_bindings
 
 const PI = 3.141592;
-const roughness = 0.05;
+const _roughness = 0.05;
 const F0 = 1.0;
 //const ambient = vec3(0.02, 0.06, 0.08);
 //const ambient = vec3(0.0, 0.0, 0.0);
@@ -92,8 +92,17 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     return out;
 }
 
+fn CalcD(NdotH: f32, roughness: f32) -> f32{
 
-fn CookTorrance(materialSpecularColor: vec3<f32>, normal: vec3<f32>, lightDir: vec3<f32>, viewDir: vec3<f32>, lightColor: vec3<f32>) -> vec3<f32> {
+        let m_squared: f32 = roughness * roughness;
+        let r1: f32 = 1. / (4. * m_squared * pow(NdotH, 4.));
+        let r2: f32 = (NdotH * NdotH - 1.) / (m_squared * NdotH * NdotH);
+        let D: f32 = r1 * exp(r2);
+        return D;
+}
+
+
+fn CookTorrance(materialSpecularColor: vec3<f32>, normal: vec3<f32>, lightDir: vec3<f32>, viewDir: vec3<f32>, lightColor: vec3<f32>, roughness: f32) -> vec3<f32> {
     let NdotL: f32 = max(0., dot(normal, lightDir));
     var Rs: f32 = 0.;
     if (NdotL > 0) {
@@ -106,10 +115,7 @@ fn CookTorrance(materialSpecularColor: vec3<f32>, normal: vec3<f32>, lightDir: v
         F = F * (1. - F0);
         F = F + (F0);
         //microfacet
-        let m_squared: f32 = roughness * roughness;
-        let r1: f32 = 1. / (4. * m_squared * pow(NdotH, 4.));
-        let r2: f32 = (NdotH * NdotH - 1.) / (m_squared * NdotH * NdotH);
-        let D: f32 = r1 * exp(r2);
+        let D = CalcD(NdotH, roughness);
         //geometric shadowing
         let two_NdotH: f32 = 2. * NdotH;
         let g1: f32 = two_NdotH * NdotV / VdotH;
@@ -165,7 +171,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
 //    var normal = normalize(cross(binormal, tangent));
 //    var normal = normalize(vec3(-slope.x, 1.0, -slope.y));
     var normal = normalize(vec3(-slope.x, 1.0, -slope.y));
-    normal = normalize(mix(normal, vec3(0.0,1.0,0.0), 0.0));
+//    normal = normalize(mix(normal, vec3(0.0,1.0,0.0), 0.0));
 //    let normal: vec3<f32> = normalize(textureSample(slope, textureSampler, mesh.world_position.xy /256.0, 0).xy);
 
     let light = normalize(light_dir);
@@ -177,8 +183,14 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     var r = reflect(view_dir, normal);
     r.z = -r.z;
     let reflected = textureSample(skybox, textureSampler, r);
+//    let reflected = vec4(0.0);
 
     let F: f32 = pow(1. - dot(-view_dir, normal), 5.);
+
+
+    let foam_color = vec3(1.0, 1.0,1.0);
+    let foam_amount = clamp((displacement1.w * foam_1) + (displacement2.w * foam_2) + (displacement3.w * foam_3),0.0,1.0);
+    let a = _roughness + 1.0 * foam_amount;
     //    return reflected;
     //    return vec4(mesh.world_position.xyz, 1.0);
 
@@ -189,28 +201,41 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
 
     let H = max(0.0, displacement.y);
 
-    let k1 = H * pow(dot_clamped(light, view_dir),4.0) * pow(0.5 - 0.5 * dot_clamped(light, normal), 3.0);
+    let k1 =  2.0 * H * pow(dot_clamped(light, view_dir),4.0) * pow(0.5 - 0.5 * dot_clamped(light, normal), 3.0);
     let k2 = pow(dot_clamped(-view_dir, normal), 2.0);
     let k3 = brightness;
 
-    var scatter = (k1 + k2) * scatter_color * sun_color * (1.0/ (1.0 + 100.0));
-    scatter += k3 * scatter_color * sun_color + ambient_color * sun_color;
+
+    let Half: vec3<f32> = normalize(light_dir - view_dir);
+    let NdotH: f32 = dot_clamped(normal, Half);
+    var D = 0.0;
+    if(NdotH > 0){
+        D = CalcD(NdotH, a);
+    }
+
+    var scatter = (k1 + k2) * scatter_color * sun_color * (1.0/ (1.0 + D));
+    var foam = (k1 + k2) * foam_color * sun_color.xyz * (1.0/ (1.0 + D));
+    foam += k3 * foam_color * sun_color.xyz + ambient_color.xyz * foam_color;
+    scatter += k3 * scatter_color * sun_color + ambient_color * scatter_color;
+
+    let water_color = mix(scatter.xyz, foam, foam_amount);
 
 
 //
-    let foam_color = vec3(2.0, 2.0,2.0);
-    let foam_amount = (displacement1.w * foam_1) + (displacement2.w * foam_2) + (displacement3.w * foam_3);
 
 //    let water_color = material_color.xyz +  vec3(1.0,1.0,1.0) * displacement.w;
 //    let water_color = foam_color * displacement.w + material_color.xyz*(1.0 - displacement.w);
-    let water_color = mix(scatter_color.xyz, foam_color, clamp(foam_amount,0.0,1.0));
+//    let water_color = mix(scatter_color.xyz, foam_color, clamp(foam_amount,0.0,1.0));
 
 
 
-//return vec4(k3);
+//return vec4(dot_clamped(vec3(0.0,1.0,0.0), normal));
+//return vec4(k3 + 1.0);
 //    return vec4( 1.0 * F * reflected.xyz + (water_color) * ambient_color.xyz + brightness * CookTorrance(water_color, specular_color, normal, light, -view_dir, sun_color.xyz), 1.0);
-    return vec4(F * reflected.xyz + (1.0 - F) * scatter.xyz + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz), 1.0);
-//    return vec4(material_color.xyz * ambient + brightness * CookTorrance(material_color.xyz, specular_color, normal, light, -view_dir, light_color),1.0);
+//return vec4(D);
+    return vec4( (F * (1.0 - foam_amount))* reflected.xyz +  (1.0 - (F * (1.0 - foam_amount))) * water_color + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, a), 1.0);
+//    return vec4( scatter.xyz + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, _roughness), 1.0);
+//    return vec4(scatter_color.xyz * ambient_color.xyz + scatter_color.xyz * brightness * sun_color.xyz  + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, _roughness),1.0);
 //    return vec4(material_color.xyz * ambient + brightness * material_color.xyz,1.0);
 //       return vec4(brightness * material.color.xyz, 1.0);
 //    return vec4(binormal, 1.0);
