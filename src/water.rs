@@ -1,23 +1,22 @@
 use avian3d::prelude::RigidBody;
 use crate::water_compute::{SpectrumParameters, WaterResource};
-use bevy::app::{App, Plugin, PreUpdate, Startup, Update};
-use bevy::asset::{Asset, Handle, RenderAssetUsages};
+use bevy::app::{App, Plugin, PostStartup, PreUpdate, Startup, Update};
+use bevy::asset::{Asset, Handle, LoadState, RenderAssetUsages};
 use bevy::color::LinearRgba;
-use bevy::image::Image;
+use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::{UVec2, Vec3};
 use bevy::math::ops::tan;
 use bevy::pbr::{Material, MaterialPlugin, NotShadowCaster};
-use bevy::prelude::{default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d, MeshMaterial3d, Meshable, Mut, Plane3d, Query, Res, ResMut, StandardMaterial, Time, Transform, Trigger, TypePath, Vec2, Window, With, Without};
+use bevy::prelude::{default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d, MeshMaterial3d, Meshable, Mut, Plane3d, Query, Res, ResMut, Resource, StandardMaterial, Time, Transform, Trigger, TypePath, Vec2, Window, With, Without};
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::gpu_readback::{Readback, ReadbackComplete};
 use bevy::render::render_graph::RenderGraph;
-use bevy::render::render_resource::{
-    AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages,
-};
+use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages, TextureViewDimension};
 use bevy::render::storage::ShaderStorageBuffer;
 use bevy::render::{Render, RenderApp, RenderSet};
 use bevy::window::PrimaryWindow;
 use crossbeam_channel::{Receiver, Sender};
+use wgpu::TextureViewDescriptor;
 use crate::Buoyant;
 
 pub struct WaterPlugin;
@@ -49,9 +48,9 @@ impl Plugin for crate::water::WaterPlugin {
         app.add_plugins(crate::water_compute::WaterComputePlugin);
 
         app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
-        app.add_systems(Startup, water_setup);
+        app.add_systems(PostStartup, water_setup);
         app.add_systems(PreUpdate, (receive_displacement_texture,receive_slope_texture));
-        app.add_systems(Update, update_time);
+        app.add_systems(Update, (update_time, reinterpret_cubemap));
     }
 }
 
@@ -65,7 +64,11 @@ fn water_setup(
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
     // Create and save a handle to the mesh.
-    let skybox_handle = asset_server.load("textures/Ryfjallet_cubemap_bc7.ktx2");
+    let skybox_handle = asset_server.load("textures/skybox.png");
+    commands.insert_resource(SkyCubeMap {
+        image: skybox_handle.clone(),
+        loaded: false,
+    });
 
     let mut initial_spectrum_texture = Image::new_fill(
         Extent3d {
@@ -141,20 +144,9 @@ fn water_setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 0.001,
+        scale: 0.05,
         angle: 1.14,
-        spreadBlend: 0.8,
-        swell: 1.0,
-        alpha: 0.01,
-        peakOmega: 0.0,
-        gamma: 10.1,
-        shortWavesFade: 0.005,
-    };
-
-    let spectrum1: SpectrumParameters = SpectrumParameters {
-        scale: 0.01,
-        angle: 1.14,
-        spreadBlend: 1.0,
+        spreadBlend: 0.0,
         swell: 1.0,
         alpha: 0.01,
         peakOmega: 2.0,
@@ -162,13 +154,24 @@ fn water_setup(
         shortWavesFade: 0.005,
     };
 
+    let spectrum1: SpectrumParameters = SpectrumParameters {
+        scale: 0.6,
+        angle: 1.14,
+        spreadBlend: 1.0,
+        swell: 0.8,
+        alpha: 0.01,
+        peakOmega: 3.0,
+        gamma: 10.1,
+        shortWavesFade: 0.005,
+    };
+
     let spectrum2: SpectrumParameters = SpectrumParameters {
-        scale: 0.001,
+        scale: 0.5,
         angle: 1.6,
         spreadBlend: 0.8,
         swell: 0.00,
         alpha: 0.01,
-        peakOmega: 8.0,
+        peakOmega: 5.0,
         gamma: 1.0,
         shortWavesFade: 0.005,
     };
@@ -186,16 +189,16 @@ fn water_setup(
 
     let water_resource = WaterResource {
         _N: 256,
-        _seed: 1,
-        _LengthScale0: 17.0,
-        _LengthScale1: 10.0,
+        _seed: 69,
+        _LengthScale0: 50.0,
+        _LengthScale1: 35.0,
         _LengthScale2: 8.0,
         _LowCutoff: 0.0001,
         _HighCutoff: 1000.0,
         _Gravity: 9.8,
         _RepeatTime: 20.0,
         _FrameTime: 0.0,
-        _Lambda: Vec2 { x: 0.8, y: 0.8 },
+        _Lambda: Vec2 { x: 0.5, y: 0.5 },
         _Spectrums: spectrums,
         _SpectrumTextures: image1.clone(),
         _InitialSpectrumTextures: image0.clone(),
@@ -205,22 +208,22 @@ fn water_setup(
         _FourierTarget: image1.clone(),
         _FoamBias: 1.0,
         _FoamDecayRate: 0.1,
-        _FoamAdd: 3.00,
+        _FoamAdd: 1.00,
         _FoamThreshold: 0.0,
     };
 
     commands.insert_resource(water_resource);
     let mat = custom_materials.add(CustomMaterial {
-        scatter_color: LinearRgba::new(0.0, 0.03, 0.15, 1.0),
-        sun_color: LinearRgba::new(0.7, 1.0, 1.0, 1.0),
+        scatter_color: LinearRgba::new(0.0, 0.04, 0.05, 1.0),
+        sun_color: LinearRgba::new(0.4, 0.4, 0.3, 1.0),
         ambient_color: LinearRgba::new(0.01, 0.01, 0.3, 1.0),
         skybox_texture: skybox_handle.clone(),
         displacement: image2.clone(),
         slope: image3.clone(),
         tile_1: 102.0,
-        tile_2: 60.0,
+        tile_2: 89.0,
         tile_3: 12.0,
-        foam_1: 0.9,
+        foam_1: 0.2,
         foam_2: 1.0,
         foam_3: 0.4,
         alpha_mode: AlphaMode::Opaque,
@@ -561,4 +564,29 @@ fn update_time(
     //     println!("Cursor is not in the game window.");
     // }
     water_resource._FrameTime += time.delta_secs() * 0.2;
+}
+#[derive(Resource)]
+pub struct SkyCubeMap {
+    pub image: Handle<Image>,
+    pub loaded: bool,
+}
+
+pub fn reinterpret_cubemap(
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    mut cubemap: ResMut<SkyCubeMap>,
+) {
+    if !cubemap.loaded && asset_server.load_state(&cubemap.image).is_loaded() {
+        cubemap.loaded = true;
+        let image = images.get_mut(&cubemap.image).unwrap();
+
+        if image.texture_descriptor.array_layer_count() == 1 {
+            //6
+            image.reinterpret_stacked_2d_as_array(image.height() / image.width());
+            image.texture_view_descriptor = Some(TextureViewDescriptor {
+                dimension: Some(TextureViewDimension::Cube),
+                ..Default::default()
+            });
+        }
+    }
 }

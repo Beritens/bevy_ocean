@@ -1,7 +1,7 @@
 mod water;
 mod water_compute;
 
-use crate::water::{get_adjusted_coords, get_displacement, get_normal, DisplacementImage, SlopeImage, WaterPlugin};
+use crate::water::{get_adjusted_coords, get_displacement, get_normal, DisplacementImage, SkyCubeMap, SlopeImage, WaterPlugin};
 use avian3d::parry::na::clamp;
 use avian3d::prelude::{AngularDamping, AngularVelocity, CenterOfMass, Collider, ColliderDensity, ComputedMass, ExternalForce, Gravity, LinearDamping, LinearVelocity, Mass, Position, RigidBody};
 use avian3d::PhysicsPlugins;
@@ -10,8 +10,9 @@ use bevy::core_pipeline::Skybox;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSamplerDescriptor};
 use bevy::prelude::ops::powf;
 use bevy::prelude::*;
-use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::{AsBindGroup, TextureViewDimension};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use wgpu::TextureViewDescriptor;
 
 fn main() {
     App::new()
@@ -29,7 +30,7 @@ fn main() {
         .add_plugins(PhysicsPlugins::default())
         .add_systems(Startup, setup)
         .add_systems(FixedPreUpdate, (movement))
-        .add_systems(Update, debug_swim)
+        .add_systems(Update, (debug_swim, update_skybox))
         .add_systems(FixedUpdate, bad_swim)
         .add_systems(FixedUpdate, swim)
         .insert_resource(Gravity(Vec3::Y * -9.81))
@@ -335,5 +336,16 @@ fn swim(
                 }
             },
         );
+    }
+}
+
+pub fn update_skybox(
+    mut cubemap: ResMut<SkyCubeMap>,
+    mut skybox_query: Query<&mut Skybox>
+) {
+    if !cubemap.loaded {
+        if let Ok(mut skybox) = skybox_query.get_single_mut(){
+            skybox.image = cubemap.image.clone();
+        }
     }
 }

@@ -4,14 +4,14 @@
 #import bevy_pbr::mesh_view_bindings as view_bindings
 
 const PI = 3.141592;
-const _roughness = 0.05;
+const _roughness = 0.1;
 const F0 = 1.0;
 //const ambient = vec3(0.02, 0.06, 0.08);
 //const ambient = vec3(0.0, 0.0, 0.0);
 const specular_color = vec3(0.1, 0.1, 0.1);
 //const light_color = vec3(1.0, 0.8, 0.2);
 //const light_color = vec3(0.0, 0.00, 0.0);
-const light_dir = vec3(0.3, 1.0, -5.0);
+const light_dir = vec3(-3.0, 1.0, 4.0);
 
 @group(2) @binding(0) var<uniform> scatter_color: vec4<f32>;
 @group(2) @binding(11) var<uniform> sun_color: vec4<f32>;
@@ -93,6 +93,10 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 }
 
 fn CalcD(NdotH: f32, roughness: f32) -> f32{
+//    let m_squared: f32 = roughness * roughness;
+//    let a = NdotH * m_squared;
+//    let b = (1 + NdotH * NdotH * (m_squared * m_squared - 1));
+//    return a / (4* b * b);
 
         let m_squared: f32 = roughness * roughness;
         let r1: f32 = 1. / (4. * m_squared * pow(NdotH, 4.));
@@ -233,6 +237,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
 //return vec4(k3 + 1.0);
 //    return vec4( 1.0 * F * reflected.xyz + (water_color) * ambient_color.xyz + brightness * CookTorrance(water_color, specular_color, normal, light, -view_dir, sun_color.xyz), 1.0);
 //return vec4(D);
+//return vec4(1.0/D);
     return vec4( (F * (1.0 - foam_amount))* reflected.xyz +  (1.0 - (F * (1.0 - foam_amount))) * water_color + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, a), 1.0);
 //    return vec4( scatter.xyz + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, _roughness), 1.0);
 //    return vec4(scatter_color.xyz * ambient_color.xyz + scatter_color.xyz * brightness * sun_color.xyz  + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, _roughness),1.0);

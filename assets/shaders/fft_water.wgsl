@@ -366,9 +366,9 @@ fn assembleMaps(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builti
 
         let jacobian = (1.0 + _Lambda.x * dxxdzz.x) * (1.0 + _Lambda.y * dxxdzz.y) - _Lambda.x * _Lambda.y * dydxz.y * dydxz.y;
 
-        let displacement = vec3(_Lambda.x * dxdz.x, dydxz.x, _Lambda.y * dxdz.y);
+        let displacement =  vec3(_Lambda.x * dxdz.x, dydxz.x, _Lambda.y * dxdz.y) / lengthScales[i];
 
-        let slopes = lengthScales[i] * dyxdyz.xy / (1.0 + abs(dxxdzz * _Lambda));
+        let slopes = dyxdyz.xy / (1.0 + abs(dxxdzz * _Lambda));
 
 
         var foam = textureLoad(_DisplacementTextures, invocation_id.xy, i).a;
