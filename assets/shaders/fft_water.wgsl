@@ -379,7 +379,7 @@ fn assembleMaps(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builti
         let biasedJacobian = max(0.0, -(jacobian - _FoamBias));
 
         if (biasedJacobian > _FoamThreshold) {
-            foam = _FoamAdd * biasedJacobian;
+            foam += _FoamAdd * biasedJacobian;
         }
 
         textureStore(_DisplacementTextures, invocation_id.xy, i, vec4(displacement, foam));

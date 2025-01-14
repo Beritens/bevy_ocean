@@ -1,14 +1,14 @@
 mod water;
 mod water_compute;
 
-use crate::water::{get_adjusted_coords, get_displacement, get_normal, DisplacementImage, SkyCubeMap, SlopeImage, WaterPlugin};
+use crate::water::{get_adjusted_coords, get_displacement, get_normal, get_slope, normal_from_slope, DisplacementImage, SkyCubeMap, SlopeImage, WaterPlugin};
 use avian3d::parry::na::clamp;
 use avian3d::prelude::{AngularDamping, AngularVelocity, CenterOfMass, Collider, ColliderDensity, ComputedMass, ExternalForce, Gravity, LinearDamping, LinearVelocity, Mass, Position, RigidBody};
 use avian3d::PhysicsPlugins;
 use bevy::asset::saver::ErasedAssetSaver;
 use bevy::core_pipeline::Skybox;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSamplerDescriptor};
-use bevy::prelude::ops::powf;
+use bevy::prelude::ops::{atan2, powf};
 use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, TextureViewDimension};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
@@ -29,7 +29,7 @@ fn main() {
         .add_plugins(WaterPlugin)
         .add_plugins(PhysicsPlugins::default())
         .add_systems(Startup, setup)
-        .add_systems(FixedPreUpdate, (movement))
+        .add_systems(PreUpdate, (movement))
         .add_systems(Update, (debug_swim, update_skybox))
         .add_systems(FixedUpdate, bad_swim)
         .add_systems(FixedUpdate, swim)
@@ -38,7 +38,9 @@ fn main() {
 }
 
 #[derive(Component)]
-struct Buoyant {
+struct Buoyant{}
+#[derive(Component)]
+struct Voxels {
     voxels: UVec3,
     size: Vec3,
     offset: Vec3,
@@ -50,7 +52,8 @@ struct Debug {
 
 #[derive(Component)]
 struct Board {
-    speed: f32
+    speed: f32,
+    angle: f32,
 }
 
 #[derive(Component)]
@@ -112,30 +115,31 @@ fn setup(
     //         ));
     //     }
     // }
-    // let cube_mesh = meshes.add(Cuboid::default());
-    // commands.spawn((
-    //     Mesh3d(cube_mesh.clone()),
-    //     Debug{},
-    //     // Board{speed: 0.0},
-    //     // Buoyant {
-    //     //     voxels: UVec3::new(10, 1, 10),
-    //     //     size: Vec3::new(1.0, 1.0, 1.0),
-    //     //     offset: Vec3::new(0.0, 0.0, 0.0),
-    //     // },
-    //     MeshMaterial3d(materials.add(Color::srgb(2.0, 2.0, 2.0))),
-    //     Transform::from_translation(Vec3::new(0.0, 1.0, 0.0))
-    //         .with_scale(Vec3::new(1.2, 0.3, 3.0)),
-    //     // RigidBody::Dynamic,
-    //     // Collider::cuboid(1.0, 1.0, 1.0),
-    //     // CenterOfMass::new(0.0, 0.0, 0.0),
-    //     // ColliderDensity(0.2),
-    //     // Control {},
-    // ));
+    let cube_mesh = meshes.add(Cuboid::default());
+    commands.spawn((
+        Mesh3d(cube_mesh.clone()),
+        // Debug{},
+        Board{speed: 0.0, angle: 0.0},
+        Voxels {
+            voxels: UVec3::new(2, 1, 3),
+            size: Vec3::new(1.0, 1.0, 1.0),
+            offset: Vec3::new(0.0, 0.0, 0.0),
+        },
+        MeshMaterial3d(materials.add(Color::srgb(2.0, 2.0, 2.0))),
+        Transform::from_translation(Vec3::new(0.0, 1.0, 0.0))
+            .with_scale(Vec3::new(1.2, 0.3, 3.0)),
+        // RigidBody::Dynamic,
+        // Collider::cuboid(1.0, 1.0, 1.0),
+        // CenterOfMass::new(0.0, 0.0, 0.0),
+        // ColliderDensity(0.2),
+        Control {},
+    ));
 }
 
 fn movement(
     keys: Res<ButtonInput<KeyCode>>,
-    mut characters: Query<(&GlobalTransform, &mut Board, &mut LinearVelocity, &mut AngularVelocity), With<Control>>,
+    time: Res<Time>,
+    mut characters: Query<( &mut Board), With<Control>>,
 ) {
     let mut input_vector: Vec2 = Vec2::new(0.0, 0.0);
     if (keys.pressed(KeyCode::KeyW)) {
@@ -150,10 +154,11 @@ fn movement(
     if (keys.pressed(KeyCode::KeyD)) {
         input_vector.x += 1.0;
     }
-    for (transform, mut board, mut vel, mut ang) in characters.iter_mut() {
-        board.speed += input_vector.y;
-        vel.0 = transform.forward() * board.speed;
-        ang.0 = - 2.0 * transform.up() * input_vector.x;
+    for (mut board) in characters.iter_mut() {
+        board.speed += input_vector.y * time.delta_secs() * 100.0;
+        board.angle += input_vector.x * time.delta_secs() * 5.0;
+        // vel.0 = transform.forward() * board.speed;
+        // ang.0 = - 2.0 * transform.up() * input_vector.x;
         // vel.0 += transform.right() * input_vector.x;
         // transform.translation.x += 2.0 * input_vector.x;
         // transform.translation.z -= 2.0 * input_vector.y;
@@ -209,7 +214,8 @@ fn debug_swim(
     }
 }
 fn bad_swim(
-    mut buoyant_query: Query<(&mut Transform, &mut LinearVelocity), (With<Board>)>,
+    time: Res<Time>,
+    mut buoyant_query: Query<(&mut Transform, &GlobalTransform, &Board, &Voxels)>,
     displacement_image_query: Query<(&DisplacementImage)>,
     slope_image_query: Query<(&SlopeImage)>,
 ) {
@@ -217,20 +223,78 @@ fn bad_swim(
         let image = &displacement_image.displacement;
         let scale = 102.0;
         let n = 256;
-        buoyant_query.par_iter_mut().for_each(|(mut transform, mut linear_velocity)| {
+        buoyant_query.par_iter_mut().for_each(|(mut transform, global_transform, board, voxels)| {
+
+
+            let voxelSize = Vec3::new(
+                voxels.size.x / voxels.voxels.x as f32,
+                voxels.size.y / voxels.voxels.y as f32,
+                voxels.size.z / voxels.voxels.z as f32,
+            );
+            let transform_scale = global_transform.scale();
+
+            let d_image = &displacement_image.displacement;
+            let s_image = &slope_image.slope;
+            let mut displacement = Vec3::ZERO;
+            let mut slope = Vec2::ZERO;
+            let voxel_num = (voxels.voxels.x * voxels.voxels.y * voxels.voxels.z) as f32;
+            for x in 0..voxels.voxels.x {
+                for y in 0..voxels.voxels.y {
+                    for z in 0..voxels.voxels.z {
+                        //this could be precomputed
+                        let mut local_point = Vec3::new(
+                            x as f32 * (voxels.size.x / voxels.voxels.x as f32)
+                                - (voxels.size.x / 2.0 - voxelSize.x / 2.0),
+                            y as f32 * (voxels.size.y / voxels.voxels.y as f32)
+                                - (voxels.size.y / 2.0 - voxelSize.y / 2.0),
+                            z as f32 * (voxels.size.z / voxels.voxels.z as f32)
+                                - (voxels.size.z / 2.0 - voxelSize.z / 2.0),
+                        );
+                        local_point += voxels.offset;
+                        let global_point = global_transform.transform_point(local_point);
+
+                        let coords = get_adjusted_coords(
+                            n,
+                            scale,
+                            Vec2::new(global_point.x, global_point.z),
+                            d_image,
+                        );
+                        displacement += get_displacement(
+                            n,
+                            scale,
+                            &d_image,
+                            coords,
+                        )/ voxel_num;
+
+
+
+                        // let normal = get_normal(
+                        //     n,
+                        //     scale,
+                        //     &s_image,
+                        //     coords,
+                        // );
+                        slope += get_slope(n, scale, &s_image, coords) / voxel_num;
+
+                    }
+                }
+            }
+
+            transform.translation += global_transform.forward() * board.speed * time.delta_secs();
+
             let coords = get_adjusted_coords(
                 n,
                 scale,
                 Vec2::new(transform.translation.x, transform.translation.z),
                 image,
             );
-            let displacement =
-                get_displacement(n, scale, &displacement_image.displacement, coords);
-
-            let normal =
-                get_normal(n, scale, &slope_image.slope, coords);
+            // let displacement =
+            //     get_displacement(n, scale, &displacement_image.displacement, coords);
+            // let normal = get_normal(n, scale, &slope_image.slope, coords);
+            let normal = normal_from_slope(slope);
+            let rot = Quat::from_rotation_arc(Vec3::Y, normal);
+            transform.rotation = rot * Quat::from_rotation_y(-board.angle);
             transform.translation.y = displacement.y;
-            linear_velocity.y = 0.0;
         });
     }
 }
@@ -242,7 +306,7 @@ fn swim(
             &mut ExternalForce,
             &GlobalTransform,
             &ComputedMass,
-            &Buoyant,
+            &Voxels,
             &CenterOfMass,
             &mut LinearVelocity,
             &AngularVelocity,

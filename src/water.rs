@@ -144,9 +144,9 @@ fn water_setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 0.05,
+        scale: 0.5,
         angle: 1.14,
-        spreadBlend: 0.0,
+        spreadBlend: 0.6,
         swell: 1.0,
         alpha: 0.01,
         peakOmega: 2.0,
@@ -155,7 +155,7 @@ fn water_setup(
     };
 
     let spectrum1: SpectrumParameters = SpectrumParameters {
-        scale: 0.6,
+        scale: 0.0,
         angle: 1.14,
         spreadBlend: 1.0,
         swell: 0.8,
@@ -166,7 +166,7 @@ fn water_setup(
     };
 
     let spectrum2: SpectrumParameters = SpectrumParameters {
-        scale: 0.5,
+        scale: 0.0,
         angle: 1.6,
         spreadBlend: 0.8,
         swell: 0.00,
@@ -190,9 +190,9 @@ fn water_setup(
     let water_resource = WaterResource {
         _N: 256,
         _seed: 69,
-        _LengthScale0: 50.0,
-        _LengthScale1: 35.0,
-        _LengthScale2: 8.0,
+        _LengthScale0: 20.0,
+        _LengthScale1: 15.0,
+        _LengthScale2: 4.0,
         _LowCutoff: 0.0001,
         _HighCutoff: 1000.0,
         _Gravity: 9.8,
@@ -206,15 +206,15 @@ fn water_setup(
         _SlopeTextures: image3.clone(),
         _Depth: 10000.0,
         _FourierTarget: image1.clone(),
-        _FoamBias: 1.0,
-        _FoamDecayRate: 0.1,
-        _FoamAdd: 1.00,
+        _FoamBias: 0.9,
+        _FoamDecayRate: 0.100000,
+        _FoamAdd: 0.20,
         _FoamThreshold: 0.0,
     };
 
     commands.insert_resource(water_resource);
     let mat = custom_materials.add(CustomMaterial {
-        scatter_color: LinearRgba::new(0.0, 0.04, 0.05, 1.0),
+        scatter_color: LinearRgba::new(0.01, 0.04, 0.06, 1.0),
         sun_color: LinearRgba::new(0.4, 0.4, 0.3, 1.0),
         ambient_color: LinearRgba::new(0.01, 0.01, 0.3, 1.0),
         skybox_texture: skybox_handle.clone(),
@@ -489,10 +489,10 @@ pub fn get_displacement(n: i32, scale: f32, image: &Vec<Vec<Vec3>>, pos: Vec2) -
 
 pub fn get_normal(n: i32, scale: f32, image: &Vec<Vec<Vec2>>, pos: Vec2) -> Vec3 {
     let slope = get_slope(n, scale, image, pos);
-    // let tangent = Vec3::new(1.0, slope.x, 0.0);
-    // let binormal = Vec3::new(0.0, slope.y, 1.0);
-    // return Vec3::cross(tangent, binormal);
-    return Vec3::new(-slope.x, 1.0, -slope.y);
+    return Vec3::new(-slope.x, 1.0, -slope.y).normalize();
+}
+pub fn normal_from_slope(slope: Vec2) -> Vec3 {
+    return Vec3::new(-slope.x, 1.0, -slope.y).normalize();
 }
 
 pub fn get_slope(n: i32, scale: f32, image: &Vec<Vec<Vec2>>, pos: Vec2) -> Vec2 {
