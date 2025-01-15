@@ -7,10 +7,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5d6731bc-33d5-4ad2-8319-1ee6dea2c5e5" name="Changes" comment="some board experiments">
-      <change afterPath="$PROJECT_DIR$/assets/shaders/ray_marching.wgsl" afterDir="false" />
+    <list default="true" id="5d6731bc-33d5-4ad2-8319-1ee6dea2c5e5" name="Changes" comment="ray marching">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/custom_material.wgsl" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/shaders/ray_marching.wgsl" beforeDir="false" afterPath="$PROJECT_DIR$/assets/shaders/ray_marching.wgsl" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/water.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/water.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -119,7 +118,7 @@
       <workItem from="1736167796363" duration="11454000" />
       <workItem from="1736793730169" duration="2655000" />
       <workItem from="1736873575186" duration="7842000" />
-      <workItem from="1736966777724" duration="11054000" />
+      <workItem from="1736966777724" duration="15696000" />
     </task>
     <task id="LOCAL-00001" summary="better shading, better physics">
       <option name="closed" value="true" />
@@ -153,7 +152,15 @@
       <option name="project" value="LOCAL" />
       <updated>1736873650785</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="ray marching">
+      <option name="closed" value="true" />
+      <created>1736977959576</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1736977959576</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -164,6 +171,7 @@
     <MESSAGE value="more shading" />
     <MESSAGE value="fixed scaling issues and skybox" />
     <MESSAGE value="some board experiments" />
-    <option name="LAST_COMMIT_MESSAGE" value="some board experiments" />
+    <MESSAGE value="ray marching" />
+    <option name="LAST_COMMIT_MESSAGE" value="ray marching" />
   </component>
 </project>

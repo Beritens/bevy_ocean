@@ -96,52 +96,14 @@ fn dot_clamped(a: vec3<f32>, b: vec3<f32>) -> f32 {
 
 }
 
-@fragment
-fn fragment(
-    mesh: VertexOutput,
-) -> @location(0) vec4<f32> {
-    //    return textureSample(displacement_texture, textureSampler, mesh.uv, 0);
-    let pos = mesh.world_position.xyz;
-
-    //    let og_point = vec3(mesh.uv.x, 1.0, mesh.uv.y);
-    let og_point = vec3(pos.x, pos.y, pos.z);
-
-    let camera_position = vec3<f32>(view_bindings::view.world_from_view[3].xyz);
-    let view_dir = normalize(pos - camera_position);
-    //    return textureSample(displacement_texture, textureSampler, mesh.uv + view_dir.xz/(-view_dir.y * 2), 0);
-
-    var current_pos = og_point.xz;
-    var diff = 0.0;
-
-    //marching
-
-    for (var i = 0; i < 50; i++) {
-        let displacement = get_displacement(current_pos);
-        let displace_point = vec3(current_pos.x, 0, current_pos.y) + displacement;
-        let s = (displacement.y - og_point.y) / view_dir.y;
-        let hit = og_point + s * view_dir;
-        let new_pos = hit - displacement;
-        let new_coords = vec2(new_pos.x, new_pos.z);
-        let diff = new_coords - current_pos;
-        current_pos = current_pos + diff * 0.15;
-//        current_pos = current_pos + normalize(diff) * clamp(length(diff) * 0.2, 0.0, 2.0);
-    //        let op = displace_point - og_point;
-    //    //    let x = dot(op, view_dir) - view_dir;
-    //        let x = -op + view_dir * dot(view_dir, op);
-    //        current_pos = current_pos + normalize(x.xz) * length(x) * factor;
-
-    }
-
-    //    return vec4(textureSample(displacement_texture, textureSampler, current_pos /10.0, 0).y/2.0 + 0.2);
-
-    //shader stuff
-
-    let slope = get_slope(current_pos);
+fn color_from_position(current_pos: vec2<f32>, camera_position: vec3<f32>, view_dir: vec3<f32> ) -> vec4<f32>{
     //    let disp = textureSample(displacement_texture, textureSampler, current_pos /tile_1, 0);
     let disp_foam = get_displacement_and_foam(current_pos);
     let light = normalize(light_dir);
+     let water_pos = vec3(current_pos.x, 0.0, current_pos.y) + disp_foam.displacement;
+     let distance = dot(water_pos - camera_position, view_dir);
+    let slope = get_slope(current_pos) * (1.0 - (distance/ (distance+1000.0)));
     var normal = normalize(vec3(-slope.x, 1.0, -slope.y));
-//     let water_pos = vec3(current_pos.x, 0.0, current_pos.y) + disp.xyz;
 
     let brightness = dot_clamped(normal, light);
     var r = reflect(view_dir, normal);
@@ -153,7 +115,8 @@ fn fragment(
 
     let foam_color = vec3(1.0, 1.0, 1.0);
     let foam_amount = clamp(disp_foam.foam.x + disp_foam.foam.y + disp_foam.foam.z, 0.0, 1.0);
-    let a = _roughness + 1.0 * foam_amount;
+    var a = _roughness + 1.0 * foam_amount;
+    a = a + (distance/ (distance + 1000.0));
 
     let H = max(0.0, disp_foam.displacement.y);
 
@@ -176,7 +139,62 @@ fn fragment(
     let water_color = mix(scatter.xyz, foam, foam_amount);
 
     //        return vec4(tile_1);
-    return vec4((F * (1.0 - foam_amount)) * reflected.xyz + (1.0 - (F * (1.0 - foam_amount))) * water_color + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, a), 1.0);
+    return vec4((F * (1.0 - foam_amount)) * reflected.xyz + (1.0 - (F * (1.0 - foam_amount))) * water_color + CookTorrance(specular_color, normal, light, -view_dir, sun_color.xyz, a), select(0.0,1.0,distance > 0.0));
+
+}
+
+
+
+@fragment
+fn fragment(
+    mesh: VertexOutput,
+) -> @location(0) vec4<f32> {
+    //    return textureSample(displacement_texture, textureSampler, mesh.uv, 0);
+    let pos = mesh.world_position.xyz;
+
+    //    let og_point = vec3(mesh.uv.x, 1.0, mesh.uv.y);
+    let og_point = vec3(pos.x, pos.y, pos.z);
+
+    let camera_position = vec3<f32>(view_bindings::view.world_from_view[3].xyz);
+    let view_dir = normalize(pos - camera_position);
+    //    return textureSample(displacement_texture, textureSampler, mesh.uv + view_dir.xz/(-view_dir.y * 2), 0);
+
+    var current_pos = og_point.xz;
+
+    //marching
+
+
+    for (var i = 0; i < 50; i++) {
+        let displacement = get_displacement(current_pos);
+        let displace_point = vec3(current_pos.x, 0, current_pos.y) + displacement;
+        let s = (displacement.y - og_point.y) / view_dir.y;
+        let hit = og_point + s * view_dir;
+        let new_pos = hit - displacement;
+        let new_coords = vec2(new_pos.x, new_pos.z);
+        let diff = new_coords - current_pos;
+        current_pos = current_pos + diff * 0.15;
+//        current_pos = current_pos + normalize(diff) * clamp(length(diff) * 0.2, 0.0, 2.0);
+    //        let op = displace_point - og_point;
+    //    //    let x = dot(op, view_dir) - view_dir;
+    //        let x = -op + view_dir * dot(view_dir, op);
+    //        current_pos = current_pos + normalize(x.xz) * length(x) * factor;
+
+    }
+
+//     let water_pos = vec3(current_pos.x, 0.0, current_pos.y) + disp_foam.displacement;
+     let distance = dot(vec3(current_pos.x, 0.0, current_pos.y) - camera_position, view_dir);
+     var col = vec4(0.0);
+     for(var i = -2; i < 3; i++){
+        for(var j = -2; j< 3; j++){
+            col += color_from_position(current_pos + vec2(f32(i), f32(j)) * distance * 0.0002, camera_position, view_dir)/ 25.0;
+        }
+     }
+     return col;
+
+    //    return vec4(textureSample(displacement_texture, textureSampler, current_pos /10.0, 0).y/2.0 + 0.2);
+
+    //shader stuff
+
 //    return vec4(water_pos, 1.0);
 
 //    return vec4(1.0) * dot(normal, light);

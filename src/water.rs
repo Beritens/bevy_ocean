@@ -158,7 +158,7 @@ fn water_setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 0.1,
+        scale: 0.2,
         angle: 1.14,
         spreadBlend: 0.6,
         swell: 1.0,
@@ -240,15 +240,19 @@ fn water_setup(
         foam_1: 0.2,
         foam_2: 1.0,
         foam_3: 0.4,
-        alpha_mode: AlphaMode::Opaque,
+        alpha_mode: AlphaMode::Blend,
     });
-    let plane: Handle<Mesh> =
-        meshes.add(Mesh::from(Plane3d::default().mesh().size(10000.0, 10000.0)));
+    let plane: Handle<Mesh> = meshes.add(Mesh::from(
+        Plane3d::default()
+            .mesh()
+            .size(10000.0, 10000.0)
+            .subdivisions(10),
+    ));
 
     commands.spawn((
         Mesh3d(plane.clone()),
         MeshMaterial3d(mat.clone()),
-        Transform::from_xyz(0.0, 6.0, 0.0).with_rotation(Quat::from_rotation_x(20.0)),
+        Transform::from_xyz(0.0, 6.0, 0.0),
         NotShadowCaster,
     ));
 
