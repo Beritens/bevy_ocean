@@ -1,27 +1,35 @@
-use avian3d::prelude::RigidBody;
 use crate::water_compute::{SpectrumParameters, WaterResource};
+use crate::Buoyant;
+use avian3d::prelude::RigidBody;
 use bevy::app::{App, Plugin, PostStartup, PreUpdate, Startup, Update};
 use bevy::asset::{Asset, Handle, LoadState, RenderAssetUsages};
 use bevy::color::LinearRgba;
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
-use bevy::math::{UVec2, Vec3};
 use bevy::math::ops::tan;
+use bevy::math::{Quat, UVec2, Vec3};
 use bevy::pbr::{Material, MaterialPlugin, NotShadowCaster};
-use bevy::prelude::{default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d, MeshMaterial3d, Meshable, Mut, Plane3d, Query, Res, ResMut, Resource, StandardMaterial, Time, Transform, Trigger, TypePath, Vec2, Window, With, Without};
+use bevy::prelude::{
+    default, AlphaMode, AssetServer, Assets, Commands, Component, Entity, Mesh, Mesh3d,
+    MeshMaterial3d, Meshable, Mut, Plane3d, Query, Res, ResMut, Resource, StandardMaterial, Time,
+    Transform, Trigger, TypePath, Vec2, Window, With, Without,
+};
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::gpu_readback::{Readback, ReadbackComplete};
 use bevy::render::render_graph::RenderGraph;
-use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages, TextureViewDimension};
+use bevy::render::render_resource::{
+    AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages,
+    TextureViewDimension,
+};
 use bevy::render::storage::ShaderStorageBuffer;
 use bevy::render::{Render, RenderApp, RenderSet};
 use bevy::window::PrimaryWindow;
 use crossbeam_channel::{Receiver, Sender};
 use wgpu::TextureViewDescriptor;
-use crate::Buoyant;
 
 pub struct WaterPlugin;
 
 const SHADER_ASSET_PATH: &str = "shaders/custom_material.wgsl";
+const SHADER_ASSET_PATH_RAY_MARCHING: &str = "shaders/ray_marching.wgsl";
 
 #[derive(Component)]
 struct DisplacementReceiver {
@@ -47,9 +55,13 @@ impl Plugin for crate::water::WaterPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(crate::water_compute::WaterComputePlugin);
 
-        app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
+        // app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
+        app.add_plugins(MaterialPlugin::<MarchMaterial>::default());
         app.add_systems(PostStartup, water_setup);
-        app.add_systems(PreUpdate, (receive_displacement_texture,receive_slope_texture));
+        app.add_systems(
+            PreUpdate,
+            (receive_displacement_texture, receive_slope_texture),
+        );
         app.add_systems(Update, (update_time, reinterpret_cubemap));
     }
 }
@@ -57,7 +69,7 @@ impl Plugin for crate::water::WaterPlugin {
 fn water_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut custom_materials: ResMut<Assets<CustomMaterial>>,
+    mut march_materials: ResMut<Assets<MarchMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
@@ -135,8 +147,10 @@ fn water_setup(
         RenderAssetUsages::RENDER_WORLD,
     );
 
-    slope_texture.texture_descriptor.usage =
-        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_SRC;
+    slope_texture.texture_descriptor.usage = TextureUsages::COPY_DST
+        | TextureUsages::STORAGE_BINDING
+        | TextureUsages::TEXTURE_BINDING
+        | TextureUsages::COPY_SRC;
 
     let image0 = images.add(initial_spectrum_texture);
     let image1 = images.add(spectrum_texture);
@@ -144,7 +158,7 @@ fn water_setup(
     let image3 = images.add(slope_texture);
 
     let spectrum: SpectrumParameters = SpectrumParameters {
-        scale: 0.5,
+        scale: 0.1,
         angle: 1.14,
         spreadBlend: 0.6,
         swell: 1.0,
@@ -155,7 +169,7 @@ fn water_setup(
     };
 
     let spectrum1: SpectrumParameters = SpectrumParameters {
-        scale: 0.0,
+        scale: 0.1,
         angle: 1.14,
         spreadBlend: 1.0,
         swell: 0.8,
@@ -166,7 +180,7 @@ fn water_setup(
     };
 
     let spectrum2: SpectrumParameters = SpectrumParameters {
-        scale: 0.0,
+        scale: 0.1,
         angle: 1.6,
         spreadBlend: 0.8,
         swell: 0.00,
@@ -213,7 +227,7 @@ fn water_setup(
     };
 
     commands.insert_resource(water_resource);
-    let mat = custom_materials.add(CustomMaterial {
+    let mat = march_materials.add(MarchMaterial {
         scatter_color: LinearRgba::new(0.01, 0.04, 0.06, 1.0),
         sun_color: LinearRgba::new(0.4, 0.4, 0.3, 1.0),
         ambient_color: LinearRgba::new(0.01, 0.01, 0.3, 1.0),
@@ -228,74 +242,81 @@ fn water_setup(
         foam_3: 0.4,
         alpha_mode: AlphaMode::Opaque,
     });
+    let plane: Handle<Mesh> =
+        meshes.add(Mesh::from(Plane3d::default().mesh().size(10000.0, 10000.0)));
 
-    let plane: Handle<Mesh> = meshes.add(Mesh::from(
-        Plane3d::default()
-            .mesh()
-            .size(100.0, 100.0)
-            .subdivisions(1000),
+    commands.spawn((
+        Mesh3d(plane.clone()),
+        MeshMaterial3d(mat.clone()),
+        Transform::from_xyz(0.0, 6.0, 0.0).with_rotation(Quat::from_rotation_x(20.0)),
+        NotShadowCaster,
     ));
 
-    let plane2: Handle<Mesh> = meshes.add(Mesh::from(
-        Plane3d::default()
-            .mesh()
-            .size(100.0, 100.0)
-            .subdivisions(500),
-    ));
-
-    let plane3: Handle<Mesh> = meshes.add(Mesh::from(
-        Plane3d::default()
-            .mesh()
-            .size(300.0, 300.0)
-            .subdivisions(100),
-    ));
-
-    for i in -5..6 {
-        for j in -5..6 {
-            if i == 0 && j == 0 {
-                for k in -1..2 {
-                    for l in -1..2 {
-                        if k == 0 && l == 0 {
-                            commands.spawn((
-                                Mesh3d(plane.clone()),
-                                MeshMaterial3d(mat.clone()),
-                                Transform::from_xyz(i as f32 * 100.0, 0.0, j as f32 * 100.0),
-                                NotShadowCaster,
-                            ));
-                        } else {
-                            commands.spawn((
-                                Mesh3d(plane2.clone()),
-                                MeshMaterial3d(mat.clone()),
-                                Transform::from_xyz(k as f32 * 100.0, 0.0, l as f32 * 100.0),
-                                NotShadowCaster,
-                            ));
-                        }
-                    }
-                }
-            } else {
-                commands.spawn((
-                    Mesh3d(plane3.clone()),
-                    MeshMaterial3d(mat.clone()),
-                    Transform::from_xyz(i as f32 * 300.0, 0.0, j as f32 * 300.0),
-                    NotShadowCaster,
-                ));
-            }
-        }
-    }
+    // let plane: Handle<Mesh> = meshes.add(Mesh::from(
+    //     Plane3d::default()
+    //         .mesh()
+    //         .size(100.0, 100.0)
+    //         .subdivisions(1000),
+    // ));
+    //
+    // let plane2: Handle<Mesh> = meshes.add(Mesh::from(
+    //     Plane3d::default()
+    //         .mesh()
+    //         .size(100.0, 100.0)
+    //         .subdivisions(500),
+    // ));
+    //
+    // let plane3: Handle<Mesh> = meshes.add(Mesh::from(
+    //     Plane3d::default()
+    //         .mesh()
+    //         .size(300.0, 300.0)
+    //         .subdivisions(100),
+    // ));
+    //
+    // for i in -5..6 {
+    //     for j in -5..6 {
+    //         if i == 0 && j == 0 {
+    //             for k in -1..2 {
+    //                 for l in -1..2 {
+    //                     if k == 0 && l == 0 {
+    //                         commands.spawn((
+    //                             Mesh3d(plane.clone()),
+    //                             MeshMaterial3d(mat.clone()),
+    //                             Transform::from_xyz(i as f32 * 100.0, 0.0, j as f32 * 100.0),
+    //                             NotShadowCaster,
+    //                         ));
+    //                     } else {
+    //                         commands.spawn((
+    //                             Mesh3d(plane2.clone()),
+    //                             MeshMaterial3d(mat.clone()),
+    //                             Transform::from_xyz(k as f32 * 100.0, 0.0, l as f32 * 100.0),
+    //                             NotShadowCaster,
+    //                         ));
+    //                     }
+    //                 }
+    //             }
+    //         } else {
+    //             commands.spawn((
+    //                 Mesh3d(plane3.clone()),
+    //                 MeshMaterial3d(mat.clone()),
+    //                 Transform::from_xyz(i as f32 * 300.0, 0.0, j as f32 * 300.0),
+    //                 NotShadowCaster,
+    //             ));
+    //         }
+    //     }
+    // }
 
     let (tx, rx): (Sender<Vec<Vec<Vec3>>>, Receiver<Vec<Vec<Vec3>>>) =
         crossbeam_channel::bounded(300000);
 
     commands.spawn(Readback::texture(image2.clone())).observe(
         move |trigger: Trigger<ReadbackComplete>| {
-
             let image_data: &Vec<u8> = &trigger.event().0;
             let displacement_map = convert_readback_data(image_data);
 
-            if(displacement_map[0][0].is_finite()){
+            if (displacement_map[0][0].is_finite()) {
                 tx.send(displacement_map).unwrap();
             }
-
         },
     );
 
@@ -303,14 +324,12 @@ fn water_setup(
         crossbeam_channel::bounded(300000);
     commands.spawn(Readback::texture(image3.clone())).observe(
         move |trigger: Trigger<ReadbackComplete>| {
-
             let image_data: &Vec<u8> = &trigger.event().0;
             let slope_map = convert_readback_data_vec2(image_data);
 
-            if(slope_map[0][0].is_finite()){
+            if (slope_map[0][0].is_finite()) {
                 tx2.send(slope_map).unwrap();
             }
-
         },
     );
     commands.spawn(DisplacementReceiver { receiver: rx });
@@ -379,25 +398,23 @@ fn convert_readback_data_vec2(data: &[u8]) -> Vec<Vec<Vec2>> {
     displacement_map
 }
 
-
 fn receive_displacement_texture(
     mut commands: Commands,
     receiver_query: Query<&DisplacementReceiver>,
     mut displacement_image_query: Query<&mut DisplacementImage>,
 ) {
-
     if let Ok(receiver) = receiver_query.get_single() {
         let result = receiver.receiver.try_recv();
         if let Ok(result) = result {
             if let Ok(mut displacement_image) = displacement_image_query.get_single_mut() {
                 displacement_image.displacement = result.clone();
-            }
-            else{
-                commands.spawn(DisplacementImage { displacement: result.clone() });
+            } else {
+                commands.spawn(DisplacementImage {
+                    displacement: result.clone(),
+                });
             }
         }
     }
-
 }
 
 fn receive_slope_texture(
@@ -405,19 +422,18 @@ fn receive_slope_texture(
     receiver_query: Query<&SlopeReceiver>,
     mut slope_image_query: Query<&mut SlopeImage>,
 ) {
-
     if let Ok(receiver) = receiver_query.get_single() {
         let result = receiver.receiver.try_recv();
         if let Ok(result) = result {
             if let Ok(mut slope_image) = slope_image_query.get_single_mut() {
                 slope_image.slope = result.clone();
-            }
-            else{
-                commands.spawn(SlopeImage { slope: result.clone() });
+            } else {
+                commands.spawn(SlopeImage {
+                    slope: result.clone(),
+                });
             }
         }
     }
-
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -459,6 +475,48 @@ impl Material for CustomMaterial {
     }
     fn fragment_shader() -> ShaderRef {
         SHADER_ASSET_PATH.into()
+    }
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct MarchMaterial {
+    #[uniform(0)]
+    scatter_color: LinearRgba,
+    #[uniform(11)]
+    sun_color: LinearRgba,
+    #[uniform(12)]
+    ambient_color: LinearRgba,
+    #[sampler(1)]
+    #[texture(2, dimension = "cube")]
+    skybox_texture: Handle<Image>,
+
+    #[texture(3, dimension = "2d_array")]
+    displacement: Handle<Image>,
+
+    #[texture(4, dimension = "2d_array")]
+    slope: Handle<Image>,
+    #[uniform(5)]
+    tile_1: f32,
+    #[uniform(6)]
+    tile_2: f32,
+    #[uniform(7)]
+    tile_3: f32,
+    #[uniform(8)]
+    foam_1: f32,
+    #[uniform(9)]
+    foam_2: f32,
+    #[uniform(10)]
+    foam_3: f32,
+
+    alpha_mode: AlphaMode,
+}
+
+impl Material for MarchMaterial {
+    fn fragment_shader() -> ShaderRef {
+        SHADER_ASSET_PATH_RAY_MARCHING.into()
     }
     fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
