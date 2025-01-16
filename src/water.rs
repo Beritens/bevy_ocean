@@ -204,7 +204,7 @@ fn water_setup(
     let water_resource = WaterResource {
         _N: 256,
         _seed: 69,
-        _LengthScale0: 20.0,
+        _LengthScale0: 23.0,
         _LengthScale1: 15.0,
         _LengthScale2: 4.0,
         _LowCutoff: 0.0001,
@@ -234,7 +234,7 @@ fn water_setup(
         skybox_texture: skybox_handle.clone(),
         displacement: image2.clone(),
         slope: image3.clone(),
-        tile_1: 102.0,
+        tile_1: 250.0,
         tile_2: 89.0,
         tile_3: 12.0,
         foam_1: 0.2,
