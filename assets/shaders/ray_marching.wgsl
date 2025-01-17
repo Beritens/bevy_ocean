@@ -194,7 +194,7 @@ fn fragment(
 
 
 
-        current_pos = current_pos + diff * 0.2;
+        current_pos = current_pos + diff * 0.5;
 
         difference = length(diff);
 //        current_pos = current_pos + normalize(diff) * clamp(length(diff) * 0.2, 0.0, 2.0);
@@ -215,8 +215,8 @@ fn fragment(
             col += color_from_position(current_pos + vec2(f32(i), f32(j)) * distance * 0.0001, camera_position, view_dir)/ 25.0;
         }
      }
-//     return vec4(vec3(f32(i)/ 150.0),1.0);
-     return col;
+     return vec4(vec3(f32(i)/ 150.0),1.0);
+//     return col;
 
     //    return vec4(textureSample(displacement_texture, textureSampler, current_pos /10.0, 0).y/2.0 + 0.2);
 

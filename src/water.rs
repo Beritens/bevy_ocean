@@ -15,6 +15,7 @@ use bevy::prelude::{
 };
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::gpu_readback::{Readback, ReadbackComplete};
+use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_graph::RenderGraph;
 use bevy::render::render_resource::{
     AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat, TextureUsages,
@@ -24,6 +25,7 @@ use bevy::render::storage::ShaderStorageBuffer;
 use bevy::render::{Render, RenderApp, RenderSet};
 use bevy::window::PrimaryWindow;
 use crossbeam_channel::{Receiver, Sender};
+use itertools::Itertools;
 use wgpu::TextureViewDescriptor;
 
 pub struct WaterPlugin;
@@ -55,7 +57,7 @@ impl Plugin for crate::water::WaterPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(crate::water_compute::WaterComputePlugin);
 
-        // app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
+        app.add_plugins(MaterialPlugin::<CustomMaterial>::default());
         app.add_plugins(MaterialPlugin::<MarchMaterial>::default());
         app.add_systems(PostStartup, water_setup);
         app.add_systems(
@@ -69,7 +71,8 @@ impl Plugin for crate::water::WaterPlugin {
 fn water_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut march_materials: ResMut<Assets<MarchMaterial>>,
+    // mut march_materials: ResMut<Assets<MarchMaterial>>,
+    mut custom_materials: ResMut<Assets<CustomMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
@@ -227,7 +230,7 @@ fn water_setup(
     };
 
     commands.insert_resource(water_resource);
-    let mat = march_materials.add(MarchMaterial {
+    let mat = custom_materials.add(CustomMaterial {
         scatter_color: LinearRgba::new(0.01, 0.04, 0.06, 1.0),
         sun_color: LinearRgba::new(0.4, 0.4, 0.3, 1.0),
         ambient_color: LinearRgba::new(0.01, 0.01, 0.3, 1.0),
@@ -240,21 +243,21 @@ fn water_setup(
         foam_1: 0.2,
         foam_2: 1.0,
         foam_3: 0.4,
-        alpha_mode: AlphaMode::Blend,
+        alpha_mode: AlphaMode::Opaque,
     });
-    let plane: Handle<Mesh> = meshes.add(Mesh::from(
-        Plane3d::default()
-            .mesh()
-            .size(10000.0, 10000.0)
-            .subdivisions(10),
-    ));
-
-    commands.spawn((
-        Mesh3d(plane.clone()),
-        MeshMaterial3d(mat.clone()),
-        Transform::from_xyz(0.0, 6.0, 0.0),
-        NotShadowCaster,
-    ));
+    // let plane: Handle<Mesh> = meshes.add(Mesh::from(
+    //     Plane3d::default()
+    //         .mesh()
+    //         .size(10000.0, 10000.0)
+    //         .subdivisions(10),
+    // ));
+    //
+    // commands.spawn((
+    //     Mesh3d(plane.clone()),
+    //     MeshMaterial3d(mat.clone()),
+    //     Transform::from_xyz(0.0, 6.0, 0.0),
+    //     NotShadowCaster,
+    // ));
 
     // let plane: Handle<Mesh> = meshes.add(Mesh::from(
     //     Plane3d::default()
@@ -309,6 +312,16 @@ fn water_setup(
     //         }
     //     }
     // }
+
+    let mut particles = Mesh::from(Particles {
+        num_particles: 1000,
+    });
+    commands.spawn((
+        Mesh3d(meshes.add(particles)),
+        MeshMaterial3d(mat.clone()),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        NotShadowCaster,
+    ));
 
     let (tx, rx): (Sender<Vec<Vec<Vec3>>>, Receiver<Vec<Vec<Vec3>>>) =
         crossbeam_channel::bounded(300000);
@@ -650,5 +663,52 @@ pub fn reinterpret_cubemap(
                 ..Default::default()
             });
         }
+    }
+}
+#[derive(Debug, Copy, Clone)]
+struct Particles {
+    num_particles: u32,
+}
+
+impl From<Particles> for Mesh {
+    fn from(particles: Particles) -> Self {
+        let extent = 1000.0;
+
+        let jump = extent / particles.num_particles as f32;
+
+        let vertices: Vec<[f32; 3]> = (0..=particles.num_particles)
+            .cartesian_product(0..=particles.num_particles)
+            .map(|(z, x)| {
+                let ax = x as f32 - particles.num_particles as f32 / 2.0;
+                let az = z as f32 - particles.num_particles as f32 / 2.0;
+                let dist = 0.01 + (ax * ax + az * az) as f32 * 0.00001;
+                [ax as f32 * jump * dist, 0.0, az as f32 * jump * dist]
+            })
+            .collect();
+
+        let indices: Vec<u32> = (0..=particles.num_particles - 1)
+            .cartesian_product(0..=particles.num_particles - 1)
+            .flat_map(|(z, x)| {
+                let top_left = z * (particles.num_particles + 1) + x;
+                let top_right = top_left + 1;
+                let bottom_left = (z + 1) * (particles.num_particles + 1) + x;
+                let bottom_right = bottom_left + 1;
+
+                vec![
+                    top_left,
+                    bottom_left,
+                    top_right,
+                    top_right,
+                    bottom_left,
+                    bottom_right,
+                ]
+            })
+            .collect();
+
+        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, Default::default());
+
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
+        mesh.insert_indices(Indices::U32(indices));
+        mesh
     }
 }
